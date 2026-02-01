@@ -1,0 +1,271 @@
+
+import React, { useState } from 'react';
+import { useTeamStore } from '../../stores/teamStore';
+import { useAuthStore } from '../../stores/authStore';
+import { useCampaignStore } from '../../stores/campaignStore'; // For sending emails
+import { apiRequest } from '../../utils/api';
+import { useSettingsStore } from '../../stores/settingsStore';
+import { 
+    Plus, Search, Trash2, Shield, Mail, Users as UsersIcon, 
+    MoreVertical, Lock, Unlock, Edit2, KeyRound, Filter 
+} from 'lucide-react';
+import UserFormModal from './UserFormModal';
+import { Role, User } from '../../types';
+
+const TeamTab: React.FC = () => {
+  const { members, addMember, removeMember, toggleBlockStatus, updateMember } = useTeamStore();
+  const { user: currentUser } = useAuthStore(); 
+  const { sendSingleEmail } = useCampaignStore();
+  const { systemTemplates, generalSettings } = useSettingsStore();
+  
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'All' | Role>('All');
+  const [statusFilter, setStatusFilter] = useState<'All' | 'active' | 'blocked'>('All');
+  
+  const [isFormModalOpen, setIsFormModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+
+  const filteredMembers = members.filter(m => {
+    const matchesSearch = 
+        String(m.name || '').toLowerCase().includes(search.toLowerCase()) || 
+        String(m.email || '').toLowerCase().includes(search.toLowerCase());
+    
+    const matchesRole = roleFilter === 'All' || m.role === roleFilter;
+    const matchesStatus = statusFilter === 'All' || m.status === statusFilter;
+
+    return matchesSearch && matchesRole && matchesStatus;
+  });
+
+  const getRoleBadgeColor = (role: Role) => {
+    switch(role) {
+      case 'admin': return 'bg-purple-100 text-purple-700 border-purple-200';
+      case 'manager': return 'bg-blue-100 text-blue-700 border-blue-200';
+      case 'agent': return 'bg-green-100 text-green-700 border-green-200';
+      default: return 'bg-slate-100 text-slate-700';
+    }
+  };
+
+  // --- Actions ---
+
+  const handleEdit = (user: User) => {
+      setEditingUser(user);
+      setIsFormModalOpen(true);
+      setMenuOpenId(null);
+  };
+
+  const handleCreate = () => {
+      setEditingUser(undefined);
+      setIsFormModalOpen(true);
+  };
+
+  const handleSaveUser = (data: any) => {
+      if (editingUser) {
+          updateMember(editingUser.id, data);
+      } else {
+          addMember(data);
+          // Send Invite Email (Simulated)
+          sendSingleEmail(
+              data.email, 
+              `Welcome to ${generalSettings.companyName}`, 
+              `<p>Hi ${data.name},</p><p>You have been invited to join the team.</p>`
+          );
+      }
+  };
+
+  const handleDelete = (id: string) => {
+    if (confirm('Are you sure you want to remove this user permanently? This action cannot be undone.')) {
+      removeMember(id);
+    }
+    setMenuOpenId(null);
+  };
+
+  const handleToggleBlock = (id: string, currentStatus: string) => {
+      const action = currentStatus === 'active' ? 'block' : 'unblock';
+      if (confirm(`Are you sure you want to ${action} this user?`)) {
+          toggleBlockStatus(id);
+      }
+      setMenuOpenId(null);
+  };
+
+  const handleResetPassword = async (email: string, name: string) => {
+      try {
+          await apiRequest('/api/v1/auth/forgot', {
+              method: 'POST',
+              body: JSON.stringify({ email, resetBaseUrl: window.location.origin })
+          });
+          alert(`Password reset link sent to ${email}`);
+      } catch (e: any) {
+          alert(e?.message || 'Failed to send reset email');
+      } finally {
+          setMenuOpenId(null);
+      }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white p-6 rounded-2xl border border-border">
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+          <div>
+            <h3 className="text-lg font-bold text-textPrimary flex items-center gap-2">
+              <UsersIcon className="text-primary" /> User Management
+            </h3>
+            <p className="text-sm text-textSecondary mt-1">
+              Create users, manage roles, and control access permissions.
+            </p>
+          </div>
+          <button 
+            onClick={handleCreate}
+            className="flex items-center gap-2 px-4 py-2 bg-darkGreen text-white font-bold rounded-xl hover:bg-opacity-90 shadow-lg shadow-darkGreen/10 transition-all text-sm"
+          >
+            <Plus size={16} /> Create User
+          </button>
+        </div>
+
+        {/* Filters & Search */}
+        <div className="flex flex-col sm:flex-row gap-4 mb-6">
+            <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-textMuted" size={18} />
+                <input 
+                    type="text" 
+                    placeholder="Search users..." 
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-border rounded-xl focus:ring-2 focus:ring-primary outline-none text-sm"
+                />
+            </div>
+            <div className="flex gap-2">
+                <div className="relative">
+                    <Filter size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-textMuted" />
+                    <select 
+                        value={roleFilter}
+                        onChange={(e) => setRoleFilter(e.target.value as any)}
+                        className="pl-9 pr-4 py-2 bg-white border border-border rounded-xl text-sm outline-none focus:border-primary appearance-none"
+                    >
+                        <option value="All">All Roles</option>
+                        <option value="admin">Admin</option>
+                        <option value="manager">Manager</option>
+                        <option value="agent">Agent</option>
+                    </select>
+                </div>
+                <select 
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as any)}
+                    className="px-4 py-2 bg-white border border-border rounded-xl text-sm outline-none focus:border-primary"
+                >
+                    <option value="All">All Status</option>
+                    <option value="active">Active</option>
+                    <option value="blocked">Blocked</option>
+                </select>
+            </div>
+        </div>
+
+        {/* User Table */}
+        <div className="overflow-x-auto rounded-xl border border-border">
+            <table className="w-full text-left text-sm">
+                <thead className="bg-slate-50 border-b border-border">
+                    <tr>
+                        <th className="px-6 py-4 font-bold text-textMuted uppercase text-xs">User</th>
+                        <th className="px-6 py-4 font-bold text-textMuted uppercase text-xs">Role</th>
+                        <th className="px-6 py-4 font-bold text-textMuted uppercase text-xs">Status</th>
+                        <th className="px-6 py-4 font-bold text-textMuted uppercase text-xs">Last Active</th>
+                        <th className="px-6 py-4 font-bold text-textMuted uppercase text-xs text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                    {filteredMembers.map(member => (
+                        <tr key={member.id} className="hover:bg-slate-50/50 transition-colors group">
+                            <td className="px-6 py-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-200 border border-border shrink-0">
+                                        <img src={member.avatar} alt={member.name} className="w-full h-full object-cover" />
+                                    </div>
+                                    <div>
+                                        <p className="font-bold text-textPrimary">{member.name}</p>
+                                        <p className="text-xs text-textMuted flex items-center gap-1">
+                                            {member.email}
+                                        </p>
+                                    </div>
+                                </div>
+                            </td>
+                            <td className="px-6 py-4">
+                                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold uppercase border ${getRoleBadgeColor(member.role)}`}>
+                                    <Shield size={10} /> {member.role}
+                                </span>
+                                {member.jobTitle && <p className="text-xs text-textSecondary mt-1">{member.jobTitle}</p>}
+                            </td>
+                            <td className="px-6 py-4">
+                                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold uppercase ${member.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                    <div className={`w-1.5 h-1.5 rounded-full ${member.status === 'active' ? 'bg-green-600' : 'bg-red-600'}`}></div>
+                                    {member.status}
+                                </span>
+                            </td>
+                            <td className="px-6 py-4 text-textSecondary text-xs">
+                                {member.lastActive ? new Date(member.lastActive).toLocaleDateString() : 'Never'}
+                            </td>
+                            <td className="px-6 py-4 text-right relative">
+                                {currentUser?.id !== member.id ? (
+                                    <>
+                                        <button 
+                                            onClick={() => setMenuOpenId(menuOpenId === member.id ? null : member.id)}
+                                            className="p-2 text-textMuted hover:text-textPrimary hover:bg-slate-100 rounded-lg transition-colors"
+                                        >
+                                            <MoreVertical size={16} />
+                                        </button>
+                                        
+                                        {/* Dropdown Menu */}
+                                        {menuOpenId === member.id && (
+                                            <div className="absolute right-8 top-8 w-48 bg-white border border-border shadow-xl rounded-xl z-20 overflow-hidden animate-in fade-in zoom-in-95 duration-100 origin-top-right text-left">
+                                                <button onClick={() => handleEdit(member)} className="w-full px-4 py-2.5 text-sm text-textSecondary hover:bg-slate-50 flex items-center gap-2">
+                                                    <Edit2 size={14} /> Edit Details
+                                                </button>
+                                                <button onClick={() => handleResetPassword(member.email, member.name)} className="w-full px-4 py-2.5 text-sm text-textSecondary hover:bg-slate-50 flex items-center gap-2">
+                                                    <KeyRound size={14} /> Send Password Reset
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleToggleBlock(member.id, member.status)} 
+                                                    className={`w-full px-4 py-2.5 text-sm flex items-center gap-2 hover:bg-slate-50 ${member.status === 'active' ? 'text-orange-600' : 'text-green-600'}`}
+                                                >
+                                                    {member.status === 'active' ? <Lock size={14} /> : <Unlock size={14} />} 
+                                                    {member.status === 'active' ? 'Block User' : 'Unblock User'}
+                                                </button>
+                                                <div className="h-px bg-border my-1"></div>
+                                                <button onClick={() => handleDelete(member.id)} className="w-full px-4 py-2.5 text-sm text-danger hover:bg-red-50 flex items-center gap-2">
+                                                    <Trash2 size={14} /> Delete User
+                                                </button>
+                                            </div>
+                                        )}
+                                        
+                                        {/* Click outside listener could be added here for perfection, 
+                                            but simple toggle works for this scope */}
+                                    </>
+                                ) : (
+                                    <span className="text-xs text-textMuted italic pr-2">You</span>
+                                )}
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+            
+            {filteredMembers.length === 0 && (
+                <div className="text-center py-12">
+                    <p className="text-textMuted text-sm">No users found matching your filters.</p>
+                </div>
+            )}
+        </div>
+      </div>
+
+      {isFormModalOpen && (
+        <UserFormModal 
+          initialData={editingUser}
+          onClose={() => setIsFormModalOpen(false)}
+          onSave={handleSaveUser}
+        />
+      )}
+    </div>
+  );
+};
+
+export default TeamTab;

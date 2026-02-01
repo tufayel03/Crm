@@ -1,0 +1,10 @@
+{
+  "name": "backup  of Matlance CRM 30 jan",
+  "description": "A high-performance SaaS CRM for lead management, email campaigns, and agent performance tracking with granular role-based permissions.",
+  "requestFramePermissions": [
+    "geolocation",
+    "camera",
+    "microphone",
+    "display-capture"
+  ]
+}

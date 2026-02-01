@@ -1,0 +1,46 @@
+﻿const mongoose = require('mongoose');
+
+const EmailQueueItemSchema = new mongoose.Schema({
+  leadId: String,
+  leadName: String,
+  leadEmail: String,
+  status: { type: String, enum: ['Pending', 'Sent', 'Failed'], default: 'Pending' },
+  sentAt: Date,
+  sentBy: String,
+  error: String,
+  trackingId: { type: String, index: true },
+  openedAt: Date
+}, { _id: false });
+
+const CampaignSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  templateId: { type: String, required: true },
+  templateName: { type: String, required: true },
+  status: { type: String, enum: ['Draft', 'Queued', 'Scheduled', 'Sending', 'Paused', 'Completed'], default: 'Draft' },
+  targetStatus: { type: String, default: 'All' },
+  targetAgentId: { type: String, default: 'All' },
+  targetOutcome: { type: String, default: 'All' },
+  targetServiceStatus: { type: String, default: 'All' },
+  targetServicePlan: { type: String, default: 'All' },
+  totalRecipients: { type: Number, default: 0 },
+  sentCount: { type: Number, default: 0 },
+  failedCount: { type: Number, default: 0 },
+  openCount: { type: Number, default: 0 },
+  clickCount: { type: Number, default: 0 },
+  queue: [EmailQueueItemSchema],
+  previewText: String,
+  scheduledAt: Date,
+  completedAt: Date
+}, { timestamps: true });
+
+CampaignSchema.set('toJSON', {
+  virtuals: true,
+  transform: (_, ret) => {
+    ret.id = ret._id;
+    delete ret._id;
+    delete ret.__v;
+  }
+});
+
+module.exports = mongoose.model('Campaign', CampaignSchema);
+

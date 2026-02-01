@@ -1,0 +1,36 @@
+const mongoose = require('mongoose');
+
+const MailAttachmentSchema = new mongoose.Schema({
+  name: String,
+  size: String
+}, { _id: false });
+
+const MailMessageSchema = new mongoose.Schema({
+  accountId: { type: String, index: true },
+  accountEmail: String,
+  folder: { type: String, default: 'INBOX' },
+  imapUid: { type: Number, index: true },
+  messageId: String,
+  from: String,
+  fromName: String,
+  to: String,
+  subject: String,
+  body: String,
+  timestamp: Date,
+  isRead: Boolean,
+  isStarred: Boolean,
+  attachments: [MailAttachmentSchema]
+}, { timestamps: true });
+
+MailMessageSchema.index({ accountId: 1, imapUid: 1 }, { unique: true, sparse: true });
+
+MailMessageSchema.set('toJSON', {
+  virtuals: true,
+  transform: (_, ret) => {
+    ret.id = ret._id;
+    delete ret._id;
+    delete ret.__v;
+  }
+});
+
+module.exports = mongoose.model('MailMessage', MailMessageSchema);
