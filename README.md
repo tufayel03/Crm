@@ -272,6 +272,83 @@ If you see a white screen, check browser console errors and backend logs.
 - Backend: `server/Dockerfile`
 - Compose: `docker-compose.yml`
 
+### Docker (Local Quick Start)
+Use this to run the full stack on your computer with one command.
+
+#### 1) Requirements
+- Docker Desktop installed and running.
+
+#### 2) Configure backend env
+Update `server/.env`:
+```
+NODE_ENV=development
+PORT=5000
+MONGO_URI=mongodb://host.docker.internal:27017/matlance
+JWT_SECRET=change_this_secret
+JWT_EXPIRES_IN=5d
+CORS_ORIGINS=http://localhost:3000
+ADMIN_EMAIL=admin@matlance.com
+ADMIN_PASSWORD=Admin4568
+ADMIN_NAME=Admin
+```
+
+Notes:
+- If MongoDB runs on your host machine, use `host.docker.internal`.
+- If you use Atlas, replace `MONGO_URI` with your Atlas connection string.
+
+#### 3) Build and run
+From project root:
+```
+docker compose up --build
+```
+
+#### 4) Open app
+- Frontend: `http://localhost:3000`
+- Backend: `http://localhost:5000`
+
+#### 5) Stop
+```
+docker compose down
+```
+
+#### 6) Custom API URL (optional)
+The compose file sets `VITE_API_URL=http://localhost:5000` for local dev.
+If you reverse proxy in production, set `VITE_API_URL=/api`.
+
+### Share With a Friend (Docker)
+Use this if you want someone else to run the full app quickly.
+
+#### Option A: GitHub (recommended)
+Your steps:
+1) Push the repo to GitHub.
+2) Send the repo URL to your friend.
+
+Friend's steps:
+```
+git clone <YOUR_REPO_URL>
+cd <REPO_FOLDER>
+docker compose up --build
+```
+Open: `http://localhost:3000`
+
+#### Option B: ZIP
+Your steps:
+1) Delete all `node_modules` folders.
+2) Zip the project.
+3) Send the ZIP.
+
+Friend's steps:
+1) Unzip.
+2) Open a terminal in the folder.
+3) Run:
+```
+docker compose up --build
+```
+Open: `http://localhost:3000`
+
+#### Requirements for friend
+- Docker Desktop installed and running.
+
 ## API Summary
 
 Base URL: `/api/v1`
