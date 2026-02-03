@@ -1,10 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { useAuditStore } from '../stores/auditStore';
-import { AlertTriangle, Search, Clock, User, RefreshCw } from 'lucide-react';
+import { useNotificationStore } from '../stores/notificationStore';
+import { AlertTriangle, Search, Clock, User, RefreshCw, Trash2 } from 'lucide-react';
 
 const ErrorLogs: React.FC = () => {
-  const { logs, fetchLogs } = useAuditStore();
+  const { logs, fetchLogs, purgeAll } = useAuditStore();
+  const { addNotification } = useNotificationStore();
   const [search, setSearch] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const errorLogs = useMemo(() => {
     const lower = search.toLowerCase();
@@ -27,12 +30,33 @@ const ErrorLogs: React.FC = () => {
           <h2 className="text-2xl font-bold text-textPrimary">Error Logs</h2>
           <p className="text-textSecondary">Authentication and system errors recorded across the platform.</p>
         </div>
-        <button
-          onClick={() => fetchLogs()}
-          className="flex items-center gap-2 px-4 py-2 bg-darkGreen text-white font-bold rounded-xl hover:bg-opacity-90 shadow-lg shadow-darkGreen/10 transition-all text-sm"
-        >
-          <RefreshCw size={16} /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={async () => {
+              if (!window.confirm('Delete all error logs? This cannot be undone.')) return;
+              setIsDeleting(true);
+              try {
+                await purgeAll();
+                addNotification('success', 'All error logs deleted.');
+              } catch (err: any) {
+                addNotification('error', err?.message || 'Failed to delete error logs.');
+              } finally {
+                setIsDeleting(false);
+              }
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-danger text-danger font-bold rounded-xl hover:bg-red-50 shadow-sm transition-all text-sm disabled:opacity-60"
+            disabled={isDeleting}
+            title="Delete all error logs"
+          >
+            <Trash2 size={16} /> {isDeleting ? 'Deleting...' : 'Clear Logs'}
+          </button>
+          <button
+            onClick={() => fetchLogs()}
+            className="flex items-center gap-2 px-4 py-2 bg-darkGreen text-white font-bold rounded-xl hover:bg-opacity-90 shadow-lg shadow-darkGreen/10 transition-all text-sm"
+          >
+            <RefreshCw size={16} /> Refresh
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-border overflow-hidden shadow-sm">

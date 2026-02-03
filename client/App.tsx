@@ -7,6 +7,7 @@ import { Loader2 } from 'lucide-react';
 
 // Lazy Load Pages
 const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -43,6 +44,7 @@ const App: React.FC = () => {
       <Suspense fallback={<LoadingFallback />}>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           
@@ -64,16 +66,16 @@ const App: React.FC = () => {
             <Route path="/database" element={<ProtectedRoute allowedRoles={['admin']}><Database /></ProtectedRoute>} />
             <Route path="/error-logs" element={<ProtectedRoute allowedRoles={['admin']}><ErrorLogs /></ProtectedRoute>} />
             <Route path="/tasks" element={<ProtectedRoute><Tasks /></ProtectedRoute>} />
-            <Route path="/meetings" element={<ProtectedRoute><Meetings /></ProtectedRoute>} />
+            <Route path="/meetings" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']}><Meetings /></ProtectedRoute>} />
             
             <Route path="/email-templates" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><EmailTemplates /></ProtectedRoute>} />
             <Route path="/campaigns" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><Campaigns /></ProtectedRoute>} />
             <Route path="/payments" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><Payments /></ProtectedRoute>} />
-            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent', 'client']}><Settings /></ProtectedRoute>} />
           </Route>
 
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/" element={<Navigate to="/portal" replace />} />
+          <Route path="*" element={<Navigate to="/portal" replace />} />
         </Routes>
       </Suspense>
     </Router>

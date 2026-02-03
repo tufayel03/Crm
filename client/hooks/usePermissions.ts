@@ -16,12 +16,8 @@ export const usePermissions = () => {
     // Clients usually have restricted fixed access, but if we wanted to map them, we could.
     // For now, assuming standard client behavior handled by routes, but returning false for these system resources.
     if (role === 'client') {
-        // Clients can basically view their own data, usually handled by component logic,
-        // but for global nav we might want to restrict.
-        // Returning true for dashboard/meetings/settings view only if needed, otherwise false.
-        if (resource === 'dashboard' || resource === 'meetings' || resource === 'settings') {
-             return action === 'view'; 
-        }
+        // Clients should only see Settings (for password change) in global nav.
+        if (resource === 'settings') return action === 'view';
         return false;
     }
 

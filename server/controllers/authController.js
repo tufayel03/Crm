@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const User = require('../models/User');
+const Client = require('../models/Client');
 const AuditLog = require('../models/AuditLog');
 const Settings = require('../models/Settings');
 const { sendMail } = require('../utils/mailer');
@@ -39,6 +40,10 @@ exports.login = async (req, res) => {
   if (user.status === 'blocked') {
     await logLoginError(email, 'User is blocked', user._id);
     return res.status(403).json({ message: 'User is blocked' });
+  }
+  if (user.status === 'pending') {
+    await logLoginError(email, 'Account pending approval', user._id);
+    return res.status(403).json({ message: 'Account pending approval' });
   }
 
   const isMatch = await user.matchPassword(password);
@@ -83,6 +88,42 @@ exports.register = async (req, res) => {
 
   const token = generateToken(user._id);
   res.status(201).json({ token, user });
+};
+
+exports.registerClient = async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ message: 'Email and password required' });
+  if (String(password).length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters' });
+
+  const normalizedEmail = String(email).toLowerCase().trim();
+  const existing = await User.findOne({ email: normalizedEmail });
+  if (existing) return res.status(400).json({ message: 'An account already exists for this email' });
+
+  const client = await Client.findOne({ email: normalizedEmail });
+  if (!client) return res.status(403).json({ message: 'Email not found in client records' });
+
+  const name = client.contactName || client.companyName || 'Client';
+  const user = await User.create({
+    name,
+    email: normalizedEmail,
+    password,
+    role: 'client',
+    status: 'pending',
+    phone: client.phone
+  });
+
+  try {
+    await AuditLog.create({
+      userId: user._id,
+      userName: normalizedEmail,
+      action: 'client_register_request',
+      details: 'Client registration pending approval'
+    });
+  } catch {
+    // ignore
+  }
+
+  res.status(201).json({ message: 'Registration submitted. Await admin approval.' });
 };
 
 exports.me = async (req, res) => {
@@ -148,4 +189,24 @@ exports.resetPassword = async (req, res) => {
   await user.save();
 
   res.json({ message: 'Password reset successful' });
+};
+
+exports.changePassword = async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ message: 'Current and new password required' });
+  }
+  if (String(newPassword).length < 6) {
+    return res.status(400).json({ message: 'Password must be at least 6 characters' });
+  }
+
+  const user = await User.findById(req.user._id).select('+password');
+  if (!user) return res.status(404).json({ message: 'User not found' });
+
+  const isMatch = await user.matchPassword(currentPassword);
+  if (!isMatch) return res.status(400).json({ message: 'Current password is incorrect' });
+
+  user.password = newPassword;
+  await user.save();
+  res.json({ message: 'Password updated' });
 };

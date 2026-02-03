@@ -18,6 +18,12 @@ const protect = async (req, res, next) => {
     if (!user) {
       return res.status(401).json({ message: 'Not authorized, user not found' });
     }
+    if (user.status === 'blocked') {
+      return res.status(403).json({ message: 'User is blocked' });
+    }
+    if (user.status === 'pending') {
+      return res.status(403).json({ message: 'Account pending approval' });
+    }
     req.user = user;
     next();
   } catch (err) {

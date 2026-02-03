@@ -117,7 +117,12 @@ const Login: React.FC = () => {
         </form>
 
         <div className="mt-8 pt-6 border-t border-border text-center">
-          <p className="text-sm text-textMuted">Protected by Matlance Security</p>
+          <div className="space-y-2">
+            <p className="text-sm text-textMuted">Protected by Matlance Security</p>
+            <p className="text-xs text-textMuted">
+              Client access? <Link to="/register" className="text-primary font-bold hover:underline">Request registration</Link>
+            </p>
+          </div>
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useAuthStore } from '../stores/authStore';
 import { 
@@ -31,6 +31,15 @@ const Settings: React.FC = () => {
     { id: 'security', label: 'Security Logs', icon: Shield, allowed: ['admin', 'manager', 'agent'] },
   ];
 
+  const visibleTabs = useMemo(() => tabs.filter(t => role && t.allowed.includes(role)), [tabs, role]);
+
+  useEffect(() => {
+    if (!visibleTabs.length) return;
+    if (!visibleTabs.find(t => t.id === activeTab)) {
+      setActiveTab(visibleTabs[0].id);
+    }
+  }, [visibleTabs, activeTab]);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -40,29 +49,31 @@ const Settings: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-8">
-        {/* Sidebar Tabs */}
-        <div className="w-full lg:w-64 shrink-0">
-           <div className="bg-white rounded-2xl border border-border overflow-hidden">
-              {tabs.filter(t => role && t.allowed.includes(role)).map(tab => (
+      <div className="space-y-4">
+        {/* Top Tabs */}
+        {visibleTabs.length > 1 && (
+          <div className="bg-white rounded-2xl border border-border p-2">
+            <div className="flex flex-wrap gap-2">
+              {visibleTabs.map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-4 text-sm font-bold transition-all border-l-4 ${
+                  className={`flex items-center gap-2 px-3 py-2 text-sm font-bold rounded-xl transition-all ${
                     activeTab === tab.id 
-                      ? 'border-primary bg-softMint/30 text-darkGreen' 
-                      : 'border-transparent text-textSecondary hover:bg-slate-50'
+                      ? 'bg-softMint text-darkGreen border border-primary/30' 
+                      : 'text-textSecondary hover:bg-slate-50 border border-transparent'
                   }`}
                 >
-                  <tab.icon size={18} />
+                  <tab.icon size={16} />
                   {tab.label}
                 </button>
               ))}
-           </div>
-        </div>
+            </div>
+          </div>
+        )}
 
         {/* Content Area */}
-        <div className="flex-1">
+        <div>
            {/* GENERAL SETTINGS TAB */}
            {activeTab === 'general' && (
              <GeneralTab />

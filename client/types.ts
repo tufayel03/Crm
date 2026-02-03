@@ -7,7 +7,7 @@ export interface User {
   email: string;
   role: Role;
   avatar?: string;
-  status: 'active' | 'blocked';
+  status: 'active' | 'blocked' | 'pending';
   phone?: string;
   jobTitle?: string;
   lastActive?: string;

@@ -69,16 +69,27 @@ const CountdownTimer: React.FC<{ targetDate: Date, onReady: () => void }> = ({ t
     );
 };
 
-const ClientMeetingCard: React.FC<{ meeting: Meeting }> = ({ meeting }) => {
-    const meetingDate = new Date(`${meeting.date}T${meeting.time}`);
+const buildMeetingDate = (meeting: Meeting) => {
+    const base = new Date(meeting.date);
+    if (Number.isNaN(base.getTime())) return null;
+    const datePart = base.toISOString().split('T')[0];
+    const timePart = meeting.time || '00:00';
+    const combined = new Date(`${datePart}T${timePart}`);
+    return Number.isNaN(combined.getTime()) ? base : combined;
+};
+
+const ClientMeetingCard: React.FC<{ meeting: Meeting; isPast?: boolean }> = ({ meeting, isPast }) => {
+    const meetingDate = buildMeetingDate(meeting) || new Date(meeting.date);
     const [isReadyToJoin, setIsReadyToJoin] = useState(false);
     const hasJoinLink = Boolean(meeting.link && !meeting.link.includes('/meeting/'));
 
     // Initial check on mount
     useEffect(() => {
+        if (isPast) return;
+        if (!meetingDate || Number.isNaN(meetingDate.getTime())) return;
         const diff = +meetingDate - +new Date();
         if (diff < JOIN_BUFFER_MS) setIsReadyToJoin(true);
-    }, [meetingDate]);
+    }, [meetingDate, isPast]);
 
     const handleJoin = () => {
         if (hasJoinLink && meeting.link) {
@@ -109,7 +120,11 @@ const ClientMeetingCard: React.FC<{ meeting: Meeting }> = ({ meeting }) => {
                     <span>{meeting.time} (BD Time) • {meeting.duration} min</span>
                 </div>
 
-                {!isReadyToJoin ? (
+                {isPast ? (
+                    <div className="bg-slate-50 p-3 rounded-xl border border-border text-center mb-2">
+                        <p className="text-xs font-bold text-textMuted">Meeting {meeting.status || 'Completed'}</p>
+                    </div>
+                ) : !isReadyToJoin ? (
                     <div className="bg-slate-50 rounded-xl p-3 border border-border">
                         <p className="text-xs text-center font-bold text-textSecondary mb-2">Starts In:</p>
                         <CountdownTimer targetDate={meetingDate} onReady={() => setIsReadyToJoin(true)} />
@@ -124,15 +139,15 @@ const ClientMeetingCard: React.FC<{ meeting: Meeting }> = ({ meeting }) => {
 
                 <button 
                     onClick={handleJoin}
-                    disabled={!hasJoinLink || (!isReadyToJoin && !meeting.link)}
+                    disabled={isPast || !hasJoinLink || (!isReadyToJoin && !meeting.link)}
                     className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${
-                        isReadyToJoin 
+                        !isPast && isReadyToJoin 
                         ? 'bg-darkGreen text-white hover:bg-opacity-90 shadow-lg shadow-darkGreen/20' 
                         : 'bg-slate-100 text-textMuted cursor-not-allowed'
                     }`}
                 >
                     <Video size={18} />
-                    {isReadyToJoin ? 'Join Meeting Now' : 'Join Enabled Soon'}
+                    {isPast ? 'Meeting Ended' : (isReadyToJoin ? 'Join Meeting Now' : 'Join Enabled Soon')}
                 </button>
             </div>
         </div>
@@ -147,23 +162,33 @@ const ClientMeetings: React.FC = () => {
   // Find current client ID based on user email
   const client = useMemo(() => clients.find(c => c.email.toLowerCase() === user?.email.toLowerCase()), [clients, user]);
 
-  const myMeetings = useMemo(() => {
-      if (!client) return [];
+  const { upcomingMeetings, pastMeetings } = useMemo(() => {
+      if (!client) return { upcomingMeetings: [], pastMeetings: [] };
       const now = new Date();
-      return meetings.filter(m => {
-          // Check association via ID or Email
-          const isMyMeeting = m.leadId === client.id; 
-          const meetingDate = new Date(`${m.date}T${m.time}`);
-          // Only show future meetings or recent past (e.g. within last hour)
-          const isRelevant = meetingDate.getTime() > (now.getTime() - 3600000); 
-          
-          return isMyMeeting && isRelevant && m.status !== 'Cancelled';
-      }).sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime());
+      const upcoming: Meeting[] = [];
+      const past: Meeting[] = [];
+
+      meetings.forEach(m => {
+          const isMyMeeting = m.leadId === client.id;
+          if (!isMyMeeting) return;
+          const meetingDate = buildMeetingDate(m);
+          if (!meetingDate) return;
+          const isPast = meetingDate.getTime() < (now.getTime() - 3600000) || m.status === 'Completed' || m.status === 'Cancelled';
+          if (isPast) past.push(m);
+          else if (m.status !== 'Cancelled') upcoming.push(m);
+      });
+
+      upcoming.sort((a, b) => (buildMeetingDate(a)?.getTime() || 0) - (buildMeetingDate(b)?.getTime() || 0));
+      past.sort((a, b) => (buildMeetingDate(b)?.getTime() || 0) - (buildMeetingDate(a)?.getTime() || 0));
+
+      return { upcomingMeetings: upcoming, pastMeetings: past };
   }, [meetings, client]);
 
   if (!client) {
       return <div className="p-8 text-center">Loading client profile...</div>;
   }
+
+  const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming');
 
   return (
     <div className="space-y-8 pb-20">
@@ -172,18 +197,55 @@ const ClientMeetings: React.FC = () => {
             <p className="text-textSecondary">Upcoming sessions with your account manager.</p>
         </div>
 
-        {myMeetings.length === 0 ? (
-            <div className="bg-slate-50 border-2 border-dashed border-border rounded-2xl p-12 text-center">
-                <Calendar size={48} className="mx-auto mb-4 text-textMuted opacity-50" />
-                <h3 className="text-lg font-bold text-textPrimary">No Meetings Scheduled</h3>
-                <p className="text-textSecondary">You don't have any upcoming meetings at the moment.</p>
-            </div>
+        <div className="flex items-center gap-2">
+            <button
+                onClick={() => setTab('upcoming')}
+                className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${
+                    tab === 'upcoming'
+                        ? 'bg-softMint text-darkGreen border-primary/30'
+                        : 'bg-white text-textSecondary border-border hover:bg-slate-50'
+                }`}
+            >
+                Upcoming Meetings
+            </button>
+            <button
+                onClick={() => setTab('past')}
+                className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${
+                    tab === 'past'
+                        ? 'bg-softMint text-darkGreen border-primary/30'
+                        : 'bg-white text-textSecondary border-border hover:bg-slate-50'
+                }`}
+            >
+                Past Meetings
+            </button>
+        </div>
+
+        {tab === 'upcoming' ? (
+            upcomingMeetings.length === 0 ? (
+                <div className="bg-slate-50 border-2 border-dashed border-border rounded-2xl p-12 text-center">
+                    <Calendar size={48} className="mx-auto mb-4 text-textMuted opacity-50" />
+                    <h3 className="text-lg font-bold text-textPrimary">No Meetings Scheduled</h3>
+                    <p className="text-textSecondary">You don't have any upcoming meetings at the moment.</p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {upcomingMeetings.map(meeting => (
+                        <ClientMeetingCard key={meeting.id} meeting={meeting} />
+                    ))}
+                </div>
+            )
         ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {myMeetings.map(meeting => (
-                    <ClientMeetingCard key={meeting.id} meeting={meeting} />
-                ))}
-            </div>
+            pastMeetings.length === 0 ? (
+                <div className="bg-white border border-border rounded-2xl p-8 text-center text-textMuted">
+                    No past meetings yet.
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {pastMeetings.map(meeting => (
+                        <ClientMeetingCard key={meeting.id} meeting={meeting} isPast />
+                    ))}
+                </div>
+            )
         )}
 
     </div>

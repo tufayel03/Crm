@@ -100,13 +100,13 @@ const ServicePlans: React.FC = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {plans.map(plan => (
           <div key={plan.id} className="bg-white rounded-2xl border border-border overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col">
-            <div className="p-6 flex-1">
-              <div className="flex justify-between items-start mb-4">
-                <div className="p-3 bg-softMint rounded-xl text-darkGreen">
-                   <Package size={24} />
+            <div className="p-4 flex-1">
+              <div className="flex justify-between items-start mb-3">
+                <div className="p-2.5 bg-softMint rounded-xl text-darkGreen">
+                   <Package size={20} />
                 </div>
                 <div className="flex gap-2">
                     <button 
@@ -126,21 +126,21 @@ const ServicePlans: React.FC = () => {
                 </div>
               </div>
 
-              <h3 className="text-xl font-bold text-textPrimary mb-2">{plan.name}</h3>
-              <p className="text-sm text-textSecondary mb-6 min-h-[40px]">{plan.description}</p>
+              <h3 className="text-lg font-bold text-textPrimary mb-1.5">{plan.name}</h3>
+              <p className="text-sm text-textSecondary mb-4 min-h-[28px]">{plan.description}</p>
 
-              <div className="flex items-end gap-1 mb-6">
-                <span className="text-3xl font-bold text-textPrimary">${plan.price.toLocaleString()}</span>
+              <div className="flex items-end gap-1 mb-4">
+                <span className="text-2xl font-bold text-textPrimary">${plan.price.toLocaleString()}</span>
                 <span className="text-sm text-textMuted font-medium mb-1">
                     {plan.billingCycle === 'one-time' ? '/ one-time' : '/ month'}
                 </span>
               </div>
 
-              <div className="space-y-3 pt-6 border-t border-border">
+              <div className="space-y-2 pt-4 border-t border-border">
                 {plan.features.length > 0 ? (
                     plan.features.map((feature, idx) => (
                         <div key={idx} className="flex items-center gap-2 text-sm text-textSecondary">
-                            <CheckCircle2 size={16} className="text-success shrink-0" />
+                            <CheckCircle2 size={14} className="text-success shrink-0" />
                             <span>{feature}</span>
                         </div>
                     ))
@@ -149,7 +149,7 @@ const ServicePlans: React.FC = () => {
                 )}
               </div>
             </div>
-            <div className="p-4 bg-slate-50 border-t border-border">
+            <div className="p-3 bg-slate-50 border-t border-border">
                 <button 
                     onClick={() => handleOpenModal(plan)}
                     className="w-full py-2 border border-border bg-white text-textPrimary font-bold rounded-lg hover:bg-slate-100 transition-colors text-sm"

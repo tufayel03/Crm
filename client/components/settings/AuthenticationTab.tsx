@@ -1,13 +1,17 @@
 
 import React, { useState } from 'react';
 import { Key, Smartphone, CheckCircle2, Shield } from 'lucide-react';
+import { apiRequest } from '../../utils/api';
+import { useNotificationStore } from '../../stores/notificationStore';
 
 const AuthenticationTab: React.FC = () => {
   const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '' });
   const [passwordStatus, setPasswordStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [isSaving, setIsSaving] = useState(false);
   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
+  const { addNotification } = useNotificationStore();
 
-  const handlePasswordUpdate = (e: React.FormEvent) => {
+  const handlePasswordUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (passwordForm.new !== passwordForm.confirm) {
         alert("Passwords do not match.");
@@ -17,13 +21,24 @@ const AuthenticationTab: React.FC = () => {
         alert("Password must be at least 6 characters.");
         return;
     }
-    
-    // Simulate API call
-    setPasswordStatus('success');
-    setTimeout(() => {
-        setPasswordStatus('idle');
-        setPasswordForm({ current: '', new: '', confirm: '' });
-    }, 3000);
+    setIsSaving(true);
+    try {
+        await apiRequest('/api/v1/auth/change-password', {
+          method: 'POST',
+          body: JSON.stringify({ currentPassword: passwordForm.current, newPassword: passwordForm.new })
+        });
+        setPasswordStatus('success');
+        addNotification('success', 'Password updated.');
+        setTimeout(() => {
+            setPasswordStatus('idle');
+            setPasswordForm({ current: '', new: '', confirm: '' });
+        }, 1500);
+    } catch (e: any) {
+        setPasswordStatus('error');
+        addNotification('error', e?.message || 'Failed to update password.');
+    } finally {
+        setIsSaving(false);
+    }
   };
 
   return (
@@ -56,8 +71,8 @@ const AuthenticationTab: React.FC = () => {
                         <input type="password" value={passwordForm.confirm} onChange={(e) => setPasswordForm({...passwordForm, confirm: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-border rounded-xl focus:ring-2 focus:ring-primary outline-none" required minLength={6} />
                     </div>
                     <div className="pt-2">
-                        <button type="submit" className="px-6 py-2 bg-darkGreen text-white font-bold rounded-xl hover:bg-opacity-90 transition-all shadow-lg shadow-darkGreen/10">
-                            Update Password
+                        <button type="submit" disabled={isSaving} className="px-6 py-2 bg-darkGreen text-white font-bold rounded-xl hover:bg-opacity-90 transition-all shadow-lg shadow-darkGreen/10 disabled:opacity-70">
+                            {isSaving ? 'Updating...' : 'Update Password'}
                         </button>
                     </div>
                 </form>

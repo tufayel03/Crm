@@ -6,6 +6,7 @@ const compression = require('compression');
 const morgan = require('morgan');
 const connectDB = require('./config/db');
 const { ensureAdminUser } = require('./config/seed');
+const { errorLogger } = require('./middleware/errorLogger');
 const { notFound, errorHandler } = require('./middleware/error');
 const { startMailboxSync } = require('./services/mailSync');
 const { startCampaignRunner } = require('./services/campaignRunner');
@@ -43,6 +44,7 @@ app.use(cors({
 
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: false }));
+app.use(errorLogger);
 
 // Route Imports
 app.use('/api/v1/auth', require('./routes/authRoutes'));

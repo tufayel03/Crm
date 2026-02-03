@@ -46,6 +46,15 @@ export const apiRequest = async <T = any>(path: string, options: RequestInit = {
     } catch {
       // ignore
     }
+    if (res.status === 401 || res.status === 403) {
+      const lower = String(message || '').toLowerCase();
+      if (lower.includes('blocked') || lower.includes('pending') || lower.includes('not authorized')) {
+        setAuthToken(null);
+        if (typeof window !== 'undefined') {
+          window.location.href = '/#/login';
+        }
+      }
+    }
     throw new Error(message);
   }
 

@@ -53,7 +53,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, toggleSidebar }) => {
     { name: 'Clients', icon: Briefcase, path: '/clients', resource: 'clients' },
     { name: 'Services', icon: Package, path: '/services', roles: ['admin', 'manager'] }, // Strict role
     { name: 'Tasks', icon: CheckSquare, path: '/tasks', resource: 'tasks' },
-    { name: 'Meetings', icon: Video, path: '/meetings', resource: 'meetings' },
+    { name: 'Meetings', icon: Video, path: '/meetings', resource: 'meetings', roles: ['admin', 'manager', 'agent'] },
     { name: 'Templates', icon: FileText, path: '/email-templates', roles: ['admin', 'manager'] },
     { name: 'Campaigns', icon: Send, path: '/campaigns', resource: 'campaigns' }, 
     { name: 'Payments', icon: CreditCard, path: '/payments', resource: 'payments' },
