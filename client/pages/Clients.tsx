@@ -79,7 +79,7 @@ const Clients: React.FC = () => {
         (c.companyName && String(c.companyName).toLowerCase().includes(term)) || 
         (c.contactName && String(c.contactName).toLowerCase().includes(term)) ||
         (c.email && String(c.email).toLowerCase().includes(term)) ||
-        (c.shortId && String(c.shortId).toLowerCase().includes(term));
+        (c.uniqueId && String(c.uniqueId).toLowerCase().includes(term));
 
       // Service Status
       const activeServices = c.services.filter(s => s.status === 'Active');
@@ -201,7 +201,7 @@ const Clients: React.FC = () => {
         : filteredClients;
 
     const exportData = clientsToExport.map(c => ({
-      'Unique ID': c.shortId,
+      'Unique ID': c.uniqueId,
       ShopName: c.companyName,
       Contact: c.contactName,
       Email: c.email,
@@ -424,6 +424,7 @@ const Clients: React.FC = () => {
       {/* Table */}
       <ClientsTable 
         clients={paginatedClients}
+        pageStartIndex={(currentPage - 1) * itemsPerPage}
         selectedIds={selectedIds}
         onToggleSelect={toggleSelect}
         onSelectPage={selectPage}

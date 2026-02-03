@@ -20,7 +20,7 @@ const MeetingFormModal: React.FC<MeetingFormModalProps> = ({ initialData, onClos
   const [searchInput, setSearchInput] = useState('');
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [selectedContact, setSelectedContact] = useState<{id: string, name: string, email: string, type: 'Lead' | 'Client', shortId: string} | null>(null);
+  const [selectedContact, setSelectedContact] = useState<{id: string, name: string, email: string, type: 'Lead' | 'Client', displayId: string} | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
 
   // Form State
@@ -41,14 +41,14 @@ const MeetingFormModal: React.FC<MeetingFormModalProps> = ({ initialData, onClos
             const client = clients.find(c => c.id === initialData.leadId);
             if (client) {
                 setSelectedContact({ 
-                    id: client.id, name: client.contactName, email: client.email, type: 'Client', shortId: client.shortId 
+                    id: client.id, name: client.contactName, email: client.email, type: 'Client', displayId: client.uniqueId 
                 });
                 setSearchInput(client.contactName);
             } else {
                 const lead = leads.find(l => l.id === initialData.leadId);
                 if (lead) {
                     setSelectedContact({ 
-                        id: lead.id, name: lead.name, email: lead.email, type: 'Lead', shortId: lead.shortId 
+                        id: lead.id, name: lead.name, email: lead.email, type: 'Lead', displayId: lead.shortId 
                     });
                     setSearchInput(lead.name);
                 } else {
@@ -89,9 +89,9 @@ const MeetingFormModal: React.FC<MeetingFormModalProps> = ({ initialData, onClos
         (c.companyName && c.companyName.toLowerCase().includes(term)) ||
         (c.contactName && c.contactName.toLowerCase().includes(term)) ||
         (c.email && c.email.toLowerCase().includes(term)) ||
-        (c.shortId && c.shortId.toLowerCase().includes(term))
+        (c.uniqueId && c.uniqueId.toLowerCase().includes(term))
     ).map(c => ({
-        id: c.id, name: c.contactName, subInfo: c.companyName, email: c.email, type: 'Client', shortId: c.shortId
+        id: c.id, name: c.contactName, subInfo: c.companyName, email: c.email, type: 'Client', displayId: c.uniqueId
     }));
 
     const matchedLeads = leads.filter(l => 
@@ -99,7 +99,7 @@ const MeetingFormModal: React.FC<MeetingFormModalProps> = ({ initialData, onClos
         (l.email && l.email.toLowerCase().includes(term)) ||
         (l.shortId && l.shortId.toLowerCase().includes(term))
     ).map(l => ({
-        id: l.id, name: l.name, subInfo: l.country, email: l.email, type: 'Lead', shortId: l.shortId
+        id: l.id, name: l.name, subInfo: l.country, email: l.email, type: 'Lead', displayId: l.shortId
     }));
 
     setSuggestions([...matchedClients, ...matchedLeads].slice(0, 5));
@@ -125,7 +125,7 @@ const MeetingFormModal: React.FC<MeetingFormModalProps> = ({ initialData, onClos
           name: searchInput || 'Internal Meeting', 
           email: '', 
           type: 'Manual', 
-          shortId: '' 
+          displayId: '' 
       };
       onSubmit(formData, contactToSubmit);
   };
@@ -189,7 +189,7 @@ const MeetingFormModal: React.FC<MeetingFormModalProps> = ({ initialData, onClos
                                   <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${suggestion.type === 'Client' ? 'bg-softMint text-darkGreen' : 'bg-blue-50 text-blue-700'}`}>
                                       {suggestion.type}
                                   </span>
-                                  <p className="text-[10px] text-textMuted mt-1 font-mono">{suggestion.shortId}</p>
+                                  <p className="text-[10px] text-textMuted mt-1 font-mono">{suggestion.displayId}</p>
                               </div>
                           </div>
                       ))}

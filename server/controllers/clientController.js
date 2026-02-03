@@ -4,7 +4,16 @@ const { getNextSequence } = require('../utils/counter');
 const { generateUniqueShortId } = require('../utils/ids');
 const { uploadToS3, deleteFromS3, isS3Configured } = require('../utils/s3');
 
+const ensureClientUniqueIds = async () => {
+  // Backfill uniqueId from legacy shortId, then remove shortId
+  await Client.collection.updateMany(
+    { uniqueId: { $exists: false }, shortId: { $exists: true } },
+    [{ $set: { uniqueId: '$shortId' } }, { $unset: 'shortId' }]
+  );
+};
+
 exports.getClients = async (req, res) => {
+  await ensureClientUniqueIds();
   const clients = await Client.find({}).sort({ createdAt: -1 });
   res.json(clients);
 };
@@ -17,12 +26,12 @@ exports.createClient = async (req, res) => {
   if (exists) return res.status(400).json({ message: 'Client already exists with this email' });
 
   const readableId = await getNextSequence('client');
-  const shortId = await generateUniqueShortId(Client, 'shortId');
+  const uniqueId = await generateUniqueShortId(Client, 'uniqueId');
 
   const client = await Client.create({
     ...req.body,
     readableId,
-    shortId,
+    uniqueId,
     walletBalance: req.body.walletBalance || 0
   });
 
@@ -47,11 +56,11 @@ exports.convertLeadToClient = async (req, res) => {
   if (!lead) return res.status(404).json({ message: 'Lead not found' });
 
   const readableId = await getNextSequence('client');
-  const shortId = lead.shortId || await generateUniqueShortId(Client, 'shortId');
+  const uniqueId = lead.shortId || await generateUniqueShortId(Client, 'uniqueId');
 
   const client = await Client.create({
     readableId,
-    shortId,
+    uniqueId,
     leadId: lead._id,
     companyName: companyName || lead.name,
     contactName: lead.name,
@@ -216,11 +225,12 @@ exports.importClients = async (req, res) => {
     }
 
     const readableId = await getNextSequence('client');
-    const shortId = data.shortId ? String(data.shortId).toUpperCase() : await generateUniqueShortId(Client, 'shortId');
+    const incomingUniqueId = data.uniqueId || data.uniqueID || data.shortId;
+    const uniqueId = incomingUniqueId ? String(incomingUniqueId).toUpperCase() : await generateUniqueShortId(Client, 'uniqueId');
 
     const client = await Client.create({
       readableId,
-      shortId,
+      uniqueId,
       leadId: '',
       companyName: data.companyName || data.shopName || '',
       contactName: data.contactName || data.name || 'Unknown',

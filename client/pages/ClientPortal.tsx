@@ -115,7 +115,7 @@ const ClientPortal: React.FC = () => {
                       </div>
                       <div className="flex justify-between py-2 border-b border-border/50">
                           <span className="text-sm text-textMuted flex items-center gap-2"><Hash size={14} /> Unique ID</span>
-                          <span className="text-sm font-mono font-bold text-primary">{client.shortId}</span>
+                          <span className="text-sm font-mono font-bold text-primary">{client.uniqueId}</span>
                       </div>
                       <div className="flex justify-between py-2 border-b border-border/50">
                           <span className="text-sm text-textMuted flex items-center gap-2"><Clock size={14} /> Onboarded</span>

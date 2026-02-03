@@ -592,9 +592,10 @@ const Leads: React.FC = () => {
       {/* Table */}
       <LeadsTable 
         leads={paginatedLeads}
-        selectedIds={selectedIds}
-        onToggleSelect={toggleSelect}
-        onSelectPage={selectPage}
+        pageStartIndex={(currentPage - 1) * itemsPerPage}
+        selectedIds={selectedIds} 
+        onToggleSelect={toggleSelect} 
+        onSelectPage={selectPage} 
         isPageSelected={isPageSelected}
         onNavigate={navigate}
         onReveal={revealContact}

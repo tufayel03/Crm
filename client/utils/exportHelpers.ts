@@ -32,7 +32,7 @@ const createClientSheet = (client: Client): ExcelJS.Workbook => {
 
   // 1. Basic Info Sheet
   const basicInfo = [
-    { Field: 'Unique ID', Value: client.shortId || 'N/A' },
+    { Field: 'Unique ID', Value: client.uniqueId || 'N/A' },
     { Field: 'Company Name', Value: client.companyName },
     { Field: 'Contact Name', Value: client.contactName },
     { Field: 'Email', Value: client.email },
@@ -89,8 +89,8 @@ export const downloadDuplicates = async (data: any[], type: 'leads' | 'clients')
 
 export const downloadClientZip = async (client: Client) => {
   const zip = new JSZip();
-  // Using Unique ID (shortId) for folder naming to match bulk export
-  const uniqueIdentifier = client.shortId || client.readableId;
+  // Using Unique ID for folder naming to match bulk export
+  const uniqueIdentifier = client.uniqueId || client.readableId;
   const folderName = `${client.companyName.replace(/[^a-z0-9]/gi, '_')}_${uniqueIdentifier}`;
   const root = zip.folder(folderName);
 
@@ -150,7 +150,7 @@ export const downloadBulkClientsZip = async (
     
     // Process chunk
     for (const client of chunk) {
-        const uniqueIdentifier = client.shortId || client.readableId;
+        const uniqueIdentifier = client.uniqueId || client.readableId;
         const safeName = `${(client.companyName || 'Client').replace(/[^a-z0-9]/gi, '_')}_${uniqueIdentifier}`;
         
         const clientFolder = masterFolder.folder(safeName);

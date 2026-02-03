@@ -5,6 +5,7 @@ import { CheckSquare, Square, Globe, ChevronRight, Mail, Hash, Edit2 } from 'luc
 
 interface ClientsTableProps {
   clients: Client[];
+  pageStartIndex: number;
   selectedIds: string[];
   onToggleSelect: (id: string) => void;
   onSelectPage: () => void;
@@ -14,7 +15,8 @@ interface ClientsTableProps {
 }
 
 const ClientsTable: React.FC<ClientsTableProps> = ({ 
-  clients, 
+  clients,
+  pageStartIndex,
   selectedIds, 
   onToggleSelect, 
   onSelectPage, 
@@ -42,6 +44,7 @@ const ClientsTable: React.FC<ClientsTableProps> = ({
                   {isPageSelected ? <CheckSquare size={18} className="text-primary" /> : <Square size={18} />}
                 </button>
               </th>
+              <th className="px-6 py-4 text-xs font-bold text-textMuted uppercase tracking-wider">SL</th>
               <th className="px-6 py-4 text-xs font-bold text-textMuted uppercase tracking-wider">Unique ID</th>
               <th className="px-6 py-4 text-xs font-bold text-textMuted uppercase tracking-wider">Shop Name</th>
               <th className="px-6 py-4 text-xs font-bold text-textMuted uppercase tracking-wider">Contact Person</th>
@@ -54,12 +57,12 @@ const ClientsTable: React.FC<ClientsTableProps> = ({
           <tbody className="divide-y divide-border">
             {clients.length === 0 ? (
                <tr>
-                 <td colSpan={8} className="px-6 py-12 text-center text-textMuted">
+              <td colSpan={9} className="px-6 py-12 text-center text-textMuted">
                    No clients found matching your filters.
                  </td>
                </tr>
             ) : (
-              clients.map((client) => (
+              clients.map((client, idx) => (
                 <tr 
                   key={client.id} 
                   onClick={() => onNavigate(`/clients/${client.id}`)}
@@ -70,8 +73,11 @@ const ClientsTable: React.FC<ClientsTableProps> = ({
                       {selectedIds.includes(client.id) ? <CheckSquare size={18} className="text-primary" /> : <Square size={18} />}
                     </button>
                   </td>
+                  <td className="px-6 py-4 text-sm font-mono text-textSecondary">
+                    #{pageStartIndex + idx + 1}
+                  </td>
                   <td className="px-6 py-4 text-sm font-mono text-textPrimary font-bold flex items-center gap-1">
-                    <Hash size={12} className="text-textMuted"/> {client.shortId || '---'}
+                    <Hash size={12} className="text-textMuted"/> {client.uniqueId || '---'}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">

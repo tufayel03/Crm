@@ -148,7 +148,7 @@ const Payments: React.FC = () => {
         (c.companyName && c.companyName.toLowerCase().includes(term)) ||
         (c.contactName && c.contactName.toLowerCase().includes(term)) ||
         (c.email && c.email.toLowerCase().includes(term)) ||
-        (c.shortId && c.shortId.toLowerCase().includes(term)) ||
+        (c.uniqueId && c.uniqueId.toLowerCase().includes(term)) ||
         (c.readableId && c.readableId.toString().includes(term))
     ).slice(0, 5);
 

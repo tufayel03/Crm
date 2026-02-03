@@ -55,7 +55,7 @@ export interface ClientDocument {
 export interface Client {
   id: string;
   readableId: number;
-  shortId: string;
+  uniqueId: string;
   leadId: string;
   companyName: string;
   contactName: string;

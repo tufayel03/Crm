@@ -23,7 +23,7 @@ const ClientDocumentSchema = new mongoose.Schema({
 
 const ClientSchema = new mongoose.Schema({
   readableId: { type: Number, unique: true },
-  shortId: { type: String, required: true },
+  uniqueId: { type: String, required: true, unique: true },
   leadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lead' },
   companyName: { type: String, required: true },
   contactName: { type: String, required: true },

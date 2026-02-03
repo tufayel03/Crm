@@ -6,6 +6,7 @@ import { CheckSquare, Square, Globe, Eye, ChevronRight, Copy, Edit2 } from 'luci
 
 interface LeadsTableProps {
   leads: Lead[];
+  pageStartIndex: number;
   selectedIds: string[];
   onToggleSelect: (id: string) => void;
   onSelectPage: () => void;
@@ -18,7 +19,8 @@ interface LeadsTableProps {
 }
 
 const LeadsTable: React.FC<LeadsTableProps> = ({ 
-  leads, 
+  leads,
+  pageStartIndex,
   selectedIds, 
   onToggleSelect, 
   onSelectPage, 
@@ -187,7 +189,7 @@ const LeadsTable: React.FC<LeadsTableProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {leads.map((lead) => (
+            {leads.map((lead, idx) => (
               <tr 
                 key={lead.id} 
                 id={`lead-row-${lead.id}`}
@@ -201,7 +203,7 @@ const LeadsTable: React.FC<LeadsTableProps> = ({
                   </button>
                 </td>
                 <td className="px-4 py-4 text-sm font-mono text-textSecondary pointer-events-none">
-                  #{lead.readableId}
+                  #{pageStartIndex + idx + 1}
                 </td>
                 <td className="px-4 py-4" onClick={() => onNavigate(`/leads/${lead.id}`)}>
                   <div className="flex items-center gap-3 cursor-pointer">

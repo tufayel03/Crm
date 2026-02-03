@@ -37,15 +37,15 @@ const Topbar: React.FC = () => {
         (l.email && l.email.toLowerCase().includes(lowerQuery)) ||
         (l.shortId && l.shortId.toLowerCase().includes(lowerQuery)) ||
         (l.readableId && l.readableId.toString().includes(lowerQuery))
-    ).map(l => ({ ...l, type: 'Lead' as const, link: `/leads/${l.id}` }));
+    ).map(l => ({ ...l, displayId: l.shortId, type: 'Lead' as const, link: `/leads/${l.id}` }));
 
     const matchedClients = clients.filter(c => 
         (c.companyName && c.companyName.toLowerCase().includes(lowerQuery)) ||
         (c.contactName && c.contactName.toLowerCase().includes(lowerQuery)) ||
         (c.email && c.email.toLowerCase().includes(lowerQuery)) ||
-        (c.shortId && c.shortId.toLowerCase().includes(lowerQuery)) ||
+        (c.uniqueId && c.uniqueId.toLowerCase().includes(lowerQuery)) ||
         (c.readableId && c.readableId.toString().includes(lowerQuery))
-    ).map(c => ({ ...c, name: c.companyName, type: 'Client' as const, link: `/clients/${c.id}` }));
+    ).map(c => ({ ...c, name: c.companyName, displayId: c.uniqueId, type: 'Client' as const, link: `/clients/${c.id}` }));
 
     return [...matchedLeads, ...matchedClients].slice(0, 6);
   }, [query, leads, clients]);
@@ -115,7 +115,7 @@ const Topbar: React.FC = () => {
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-2 text-xs text-textSecondary">
-                                        <span className="font-mono bg-slate-100 px-1 rounded text-textMuted">#{result.shortId}</span>
+                                        <span className="font-mono bg-slate-100 px-1 rounded text-textMuted">#{result.displayId}</span>
                                         <span className="truncate opacity-70">{result.email}</span>
                                     </div>
                                 </div>
