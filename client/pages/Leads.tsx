@@ -240,7 +240,7 @@ const Leads: React.FC = () => {
   };
 
   const openBulkStatus = () => {
-    setTargetStatus(statuses[0]);
+    setTargetStatus(statuses[0] || '');
     setIsBulkStatusModalOpen(true);
   };
 

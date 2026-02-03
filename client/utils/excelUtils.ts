@@ -7,7 +7,10 @@ const getCellText = (value: ExcelJS.CellValue | undefined) => {
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
     return value;
   }
-  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return '';
+    return value.toISOString();
+  }
   if (typeof value === 'object' && 'text' in value && typeof value.text === 'string') {
     return value.text;
   }
