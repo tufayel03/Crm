@@ -197,13 +197,17 @@ const Leads: React.FC = () => {
 
   const handleRangeSelect = (e: React.FormEvent) => {
     e.preventDefault();
-    const start = parseInt(rangeStart);
-    const end = parseInt(rangeEnd);
-    
-    if (isNaN(start) || isNaN(end)) return;
+    const startRaw = parseInt(rangeStart);
+    const endRaw = parseInt(rangeEnd);
+    if (isNaN(startRaw) || isNaN(endRaw)) return;
+    const start = Math.min(startRaw, endRaw);
+    const end = Math.max(startRaw, endRaw);
 
-    const leadsInRange = leads.filter(l => l.readableId >= start && l.readableId <= end);
-    const idsInRange = leadsInRange.map(l => l.id);
+    // Range selection is based on the serial number shown in the table (filtered + sorted list)
+    const idsInRange = filteredLeads
+      .map((l, idx) => ({ id: l.id, serial: idx + 1 }))
+      .filter(item => item.serial >= start && item.serial <= end)
+      .map(item => item.id);
     
     setSelectedIds(prev => [...new Set([...prev, ...idsInRange])]);
   };

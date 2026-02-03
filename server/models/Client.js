@@ -27,7 +27,7 @@ const ClientSchema = new mongoose.Schema({
   leadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lead' },
   companyName: { type: String, required: true },
   contactName: { type: String, required: true },
-  email: { type: String, required: true },
+  email: { type: String },
   phone: String,
   country: String,
   accountManagerId: String,

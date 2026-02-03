@@ -20,10 +20,12 @@ exports.getClients = async (req, res) => {
 
 exports.createClient = async (req, res) => {
   const { companyName, contactName, email } = req.body;
-  if (!companyName || !contactName || !email) return res.status(400).json({ message: 'Company, contact name, and email required' });
+  if (!contactName) return res.status(400).json({ message: 'Contact name is required' });
 
-  const exists = await Client.findOne({ email });
-  if (exists) return res.status(400).json({ message: 'Client already exists with this email' });
+  if (email) {
+    const exists = await Client.findOne({ email });
+    if (exists) return res.status(400).json({ message: 'Client already exists with this email' });
+  }
 
   const readableId = await getNextSequence('client');
   const uniqueId = await generateUniqueShortId(Client, 'uniqueId');

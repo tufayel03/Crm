@@ -12,6 +12,12 @@ interface ClientsToolbarProps {
   setManagerFilter: (val: string) => void;
   countryFilter: string;
   setCountryFilter: (val: string) => void;
+  rangeStart: string;
+  setRangeStart: (val: string) => void;
+  rangeEnd: string;
+  setRangeEnd: (val: string) => void;
+  onRangeSelect: (e: React.FormEvent) => void;
+  isAdmin: boolean;
   
   uniqueManagers: string[];
   uniqueCountries: string[];
@@ -29,6 +35,8 @@ const ClientsToolbar: React.FC<ClientsToolbarProps> = ({
   serviceFilter, setServiceFilter,
   managerFilter, setManagerFilter,
   countryFilter, setCountryFilter,
+  rangeStart, setRangeStart, rangeEnd, setRangeEnd, onRangeSelect,
+  isAdmin,
   uniqueManagers, uniqueCountries,
   plans, selectedPlan, setSelectedPlan,
   onExport
@@ -169,6 +177,34 @@ const ClientsToolbar: React.FC<ClientsToolbarProps> = ({
             )}
           </div>
         </div>
+
+        {/* Range Selection Tool */}
+        {isAdmin && (
+          <form onSubmit={onRangeSelect} className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-border">
+            <span className="text-xs font-bold text-textMuted uppercase px-2">Select Range:</span>
+            <input 
+              type="number" 
+              placeholder="From ID" 
+              value={rangeStart}
+              onChange={(e) => setRangeStart(e.target.value)}
+              className="w-24 px-2 py-1.5 text-sm bg-white text-black border border-border rounded-lg"
+            />
+            <span className="text-textMuted">-</span>
+             <input 
+              type="number" 
+              placeholder="To ID" 
+              value={rangeEnd}
+              onChange={(e) => setRangeEnd(e.target.value)}
+              className="w-24 px-2 py-1.5 text-sm bg-white text-black border border-border rounded-lg"
+            />
+            <button 
+              type="submit"
+              className="px-3 py-1.5 bg-primary text-darkGreen text-xs font-bold rounded-lg hover:bg-softMint"
+            >
+              Apply
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );

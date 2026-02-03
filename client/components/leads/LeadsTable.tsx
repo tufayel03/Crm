@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Lead } from '../../types';
 import { maskValue } from '../../utils/mockData';
 import { CheckSquare, Square, Globe, Eye, ChevronRight, Copy, Edit2 } from 'lucide-react';
+import { useNotificationStore } from '../../stores/notificationStore';
 
 interface LeadsTableProps {
   leads: Lead[];
@@ -31,6 +32,7 @@ const LeadsTable: React.FC<LeadsTableProps> = ({
   isAdmin,
   onEdit
 }) => {
+  const { addNotification } = useNotificationStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [selectionBox, setSelectionBox] = useState<{x: number, y: number, w: number, h: number} | null>(null);
@@ -149,7 +151,7 @@ const LeadsTable: React.FC<LeadsTableProps> = ({
   const handleCopy = (text: string) => {
     if (!text) return;
     navigator.clipboard.writeText(text);
-    alert(`Copied: ${text}`); 
+    addNotification('success', 'Copied to clipboard.');
   };
 
   return (
@@ -225,7 +227,7 @@ const LeadsTable: React.FC<LeadsTableProps> = ({
                 </td>
                 <td className="px-4 py-4" onDoubleClick={(e) => { e.stopPropagation(); handleCopy(lead.email); }}>
                   <div className="space-y-0.5 cursor-text">
-                    <p className="text-xs font-medium text-textSecondary" title="Double click to copy email">{maskValue(lead.email, 'email', lead.isRevealed || isAdmin)}</p>
+                    <p className="text-xs font-medium text-textSecondary cursor-copy select-none" title="Double click to copy email">{maskValue(lead.email, 'email', lead.isRevealed || isAdmin)}</p>
                     <p className="text-[10px] text-textMuted">{maskValue(lead.phone, 'phone', lead.isRevealed || isAdmin)}</p>
                   </div>
                 </td>

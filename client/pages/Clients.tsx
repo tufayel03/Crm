@@ -6,6 +6,7 @@ import { useServicesStore } from '../stores/servicesStore';
 import { useAuthStore } from '../stores/authStore';
 import { useTeamStore } from '../stores/teamStore';
 import { usePermissions } from '../hooks/usePermissions'; // Hook
+import { useNotificationStore } from '../stores/notificationStore';
 import { downloadBulkClientsZip, downloadDuplicates } from '../utils/exportHelpers';
 import { createWorkbookFromJson, downloadWorkbook, loadWorkbookFromArrayBuffer, parseCsvToJson, sheetToJson } from '../utils/excelUtils';
 import { 
@@ -23,9 +24,10 @@ import ClientFormModal from '../components/clients/ClientFormModal';
 const Clients: React.FC = () => {
   const { clients, addClient, updateClient, importClients, removeClients } = useClientsStore();
   const { plans } = useServicesStore();
-  const { user } = useAuthStore();
+  const { user, role } = useAuthStore();
   const { members } = useTeamStore();
   const { can } = usePermissions(); // Permissions
+  const { addNotification } = useNotificationStore();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -39,6 +41,8 @@ const Clients: React.FC = () => {
   const [selectedPlan, setSelectedPlan] = useState('All');
   const [managerFilter, setManagerFilter] = useState('All');
   const [countryFilter, setCountryFilter] = useState('All');
+  const [rangeStart, setRangeStart] = useState('');
+  const [rangeEnd, setRangeEnd] = useState('');
   
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -61,6 +65,7 @@ const Clients: React.FC = () => {
   const [duplicatesFound, setDuplicatesFound] = useState<any[]>([]);
   const [importStats, setImportStats] = useState({ added: 0, count: 0 });
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const isAdmin = role === 'admin' || role === 'manager';
 
   // Derived Data for Dropdowns
   const uniqueManagers = useMemo(() => Array.from(new Set(clients.map(c => c.accountManagerName))).filter(Boolean).sort() as string[], [clients]);
@@ -147,6 +152,22 @@ const Clients: React.FC = () => {
       setSelectedIds(allIds);
   };
 
+  const handleRangeSelect = (e: React.FormEvent) => {
+    e.preventDefault();
+    const startRaw = parseInt(rangeStart);
+    const endRaw = parseInt(rangeEnd);
+    if (isNaN(startRaw) || isNaN(endRaw)) return;
+    const start = Math.min(startRaw, endRaw);
+    const end = Math.max(startRaw, endRaw);
+
+    const idsInRange = filteredClients
+      .map((c, idx) => ({ id: c.id, serial: idx + 1 }))
+      .filter(item => item.serial >= start && item.serial <= end)
+      .map(item => item.id);
+
+    setSelectedIds(prev => [...new Set([...prev, ...idsInRange])]);
+  };
+
   const isPageSelected = useMemo(() => 
     paginatedClients.length > 0 && paginatedClients.every(c => selectedIds.includes(c.id)), 
   [paginatedClients, selectedIds]);
@@ -159,21 +180,27 @@ const Clients: React.FC = () => {
   }, [filteredClients, selectedIds]);
 
   const handleSaveClient = async (clientData: any) => {
-      if (editingClient) {
-          await updateClient(editingClient.id, clientData);
-      } else {
-          await addClient({
-              leadId: '',
-              ...clientData,
-              services: [],
-              invoices: [],
-              documents: [],
-              notes: [],
-              onboardedAt: new Date().toISOString()
-          });
+      try {
+          if (editingClient) {
+              await updateClient(editingClient.id, clientData);
+              addNotification('success', 'Client updated.');
+          } else {
+              await addClient({
+                  leadId: '',
+                  ...clientData,
+                  services: [],
+                  invoices: [],
+                  documents: [],
+                  notes: [],
+                  onboardedAt: new Date().toISOString()
+              });
+              addNotification('success', 'Client created.');
+          }
+          setIsClientFormModalOpen(false);
+          setEditingClient(null);
+      } catch (err: any) {
+          addNotification('error', err?.message || 'Failed to save client.');
       }
-      setIsClientFormModalOpen(false);
-      setEditingClient(null);
   };
 
   const handleEditClient = (client: Client) => {
@@ -386,6 +413,10 @@ const Clients: React.FC = () => {
         serviceFilter={serviceFilter} setServiceFilter={setServiceFilter}
         managerFilter={managerFilter} setManagerFilter={setManagerFilter}
         countryFilter={countryFilter} setCountryFilter={setCountryFilter}
+        rangeStart={rangeStart} setRangeStart={setRangeStart}
+        rangeEnd={rangeEnd} setRangeEnd={setRangeEnd}
+        onRangeSelect={handleRangeSelect}
+        isAdmin={isAdmin}
         uniqueManagers={uniqueManagers}
         uniqueCountries={uniqueCountries}
         plans={plans} 

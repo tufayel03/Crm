@@ -52,7 +52,6 @@ const ClientFormModal: React.FC<ClientFormModalProps> = ({ initialData, agents, 
         return;
     }
     onSave(formData);
-    onClose();
   };
 
   return (

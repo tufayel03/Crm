@@ -2,6 +2,7 @@
 import React from 'react';
 import { Client } from '../../types';
 import { CheckSquare, Square, Globe, ChevronRight, Mail, Hash, Edit2 } from 'lucide-react';
+import { useNotificationStore } from '../../stores/notificationStore';
 
 interface ClientsTableProps {
   clients: Client[];
@@ -24,12 +25,13 @@ const ClientsTable: React.FC<ClientsTableProps> = ({
   onNavigate,
   onEdit
 }) => {
+  const { addNotification } = useNotificationStore();
   
   const handleCopy = (e: React.MouseEvent, text: string) => {
     e.stopPropagation();
     if (text) {
         navigator.clipboard.writeText(text);
-        alert("Copied to clipboard: " + text);
+        addNotification('success', 'Copied to clipboard.');
     }
   };
 
@@ -65,8 +67,7 @@ const ClientsTable: React.FC<ClientsTableProps> = ({
               clients.map((client, idx) => (
                 <tr 
                   key={client.id} 
-                  onClick={() => onNavigate(`/clients/${client.id}`)}
-                  className={`hover:bg-slate-50 transition-colors cursor-pointer group ${selectedIds.includes(client.id) ? 'bg-softMint/20' : ''}`}
+                  className={`hover:bg-slate-50 transition-colors group ${selectedIds.includes(client.id) ? 'bg-softMint/20' : ''}`}
                 >
                   <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => onToggleSelect(client.id)} className="text-textMuted hover:text-primary transition-colors">
@@ -76,11 +77,16 @@ const ClientsTable: React.FC<ClientsTableProps> = ({
                   <td className="px-6 py-4 text-sm font-mono text-textSecondary">
                     #{pageStartIndex + idx + 1}
                   </td>
-                  <td className="px-6 py-4 text-sm font-mono text-textPrimary font-bold flex items-center gap-1">
+                  <td className="px-6 py-4 text-sm font-mono text-textPrimary font-bold flex items-center gap-1 cursor-copy select-none" onDoubleClick={(e) => handleCopy(e, client.uniqueId || '')} title="Double click to copy Unique ID">
                     <Hash size={12} className="text-textMuted"/> {client.uniqueId || '---'}
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => onNavigate(`/clients/${client.id}`)}
+                      className="flex items-center gap-3 text-left"
+                      title="Open client"
+                    >
                       <div className="w-10 h-10 rounded-xl bg-darkGreen flex items-center justify-center text-white font-bold text-lg shadow-sm shrink-0">
                         {(client.companyName || client.contactName).charAt(0)}
                       </div>
@@ -90,14 +96,14 @@ const ClientsTable: React.FC<ClientsTableProps> = ({
                           <Globe size={10} /> {client.country}
                         </p>
                       </div>
-                    </div>
+                    </button>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
                       <div className="space-y-0.5">
                         <p className="text-sm font-semibold text-textPrimary">{client.contactName}</p>
                         <p 
-                            className="text-xs text-textMuted flex items-center gap-1 hover:text-primary transition-colors"
+                            className="text-xs text-textMuted flex items-center gap-1 hover:text-primary transition-colors cursor-copy select-none"
                             onDoubleClick={(e) => handleCopy(e, client.email)}
                             title="Double click to copy email"
                         >
