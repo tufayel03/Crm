@@ -52,6 +52,8 @@ const SettingsSchema = new mongoose.Schema({
     hourly: { type: Number, default: 50 },
     daily: { type: Number, default: 500 }
   },
+  leadStatuses: [String],
+  leadOutcomes: [String],
   permissions: mongoose.Schema.Types.Mixed
 }, { timestamps: true });
 

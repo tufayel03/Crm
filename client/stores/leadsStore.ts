@@ -6,6 +6,7 @@ interface LeadsState {
   leads: Lead[];
   statuses: string[];
   outcomes: string[];
+  fetchMeta: () => Promise<void>;
   fetchLeads: () => Promise<void>;
   addLead: (lead: Omit<Lead, 'id' | 'createdAt' | 'notes' | 'isRevealed' | 'readableId' | 'shortId'>) => Promise<void>;
   updateLead: (id: string, updates: Partial<Lead>) => Promise<void>;
@@ -17,21 +18,28 @@ interface LeadsState {
   bulkDelete: (ids: string[]) => Promise<void>;
   bulkAssign: (ids: string[], agentId: string, agentName: string) => Promise<void>;
   bulkStatusUpdate: (ids: string[], status: LeadStatus) => Promise<void>;
-  addCustomStatus: (status: string) => void;
-  removeCustomStatus: (status: string) => void;
-  addOutcome: (outcome: string) => void;
-  removeOutcome: (outcome: string) => void;
+  addCustomStatus: (status: string) => Promise<void>;
+  removeCustomStatus: (status: string) => Promise<void>;
+  addOutcome: (outcome: string) => Promise<void>;
+  removeOutcome: (outcome: string) => Promise<void>;
   purgeAll: () => Promise<void>;
   importLeads: (newLeadsData: any[]) => Promise<{ added: number; duplicates: any[] }>;
 }
 
-const DEFAULT_STATUSES = ['New', 'Contacted', 'Qualified', 'Proposal', 'Negotiation', 'Closed Won', 'Closed Lost', 'Converted'];
-const DEFAULT_OUTCOMES = ['Busy', 'Follow-up', 'Interested', 'Not Interested', 'Meeting Required'];
+const coerceList = (value: any) => Array.isArray(value) ? value : [];
 
 export const useLeadsStore = create<LeadsState>((set, get) => ({
   leads: [],
-  statuses: DEFAULT_STATUSES,
-  outcomes: DEFAULT_OUTCOMES,
+  statuses: [],
+  outcomes: [],
+
+  fetchMeta: async () => {
+    const data = await apiRequest<any>('/api/v1/settings');
+    set({
+      statuses: coerceList(data.leadStatuses),
+      outcomes: coerceList(data.leadOutcomes)
+    });
+  },
 
   fetchLeads: async () => {
     const data = await apiRequest<Lead[]>('/api/v1/leads');
@@ -105,23 +113,41 @@ export const useLeadsStore = create<LeadsState>((set, get) => ({
     }));
   },
 
-  addCustomStatus: (status) => set(state => {
-    if (state.statuses.includes(status)) return state;
-    return { statuses: [...state.statuses, status] };
-  }),
+  addCustomStatus: async (status) => {
+    const trimmed = String(status || '').trim();
+    if (!trimmed) return;
+    const current = get().statuses;
+    if (current.includes(trimmed)) return;
+    const next = [...current, trimmed];
+    await apiRequest('/api/v1/settings', { method: 'PATCH', body: JSON.stringify({ leadStatuses: next }) });
+    set({ statuses: next });
+  },
 
-  removeCustomStatus: (status) => set(state => ({
-    statuses: state.statuses.filter(s => s !== status)
-  })),
+  removeCustomStatus: async (status) => {
+    const trimmed = String(status || '').trim();
+    if (!trimmed) return;
+    const next = get().statuses.filter(s => s !== trimmed);
+    await apiRequest('/api/v1/settings', { method: 'PATCH', body: JSON.stringify({ leadStatuses: next }) });
+    set({ statuses: next });
+  },
 
-  addOutcome: (outcome) => set(state => {
-    if (state.outcomes.includes(outcome)) return state;
-    return { outcomes: [...state.outcomes, outcome] };
-  }),
+  addOutcome: async (outcome) => {
+    const trimmed = String(outcome || '').trim();
+    if (!trimmed) return;
+    const current = get().outcomes;
+    if (current.includes(trimmed)) return;
+    const next = [...current, trimmed];
+    await apiRequest('/api/v1/settings', { method: 'PATCH', body: JSON.stringify({ leadOutcomes: next }) });
+    set({ outcomes: next });
+  },
 
-  removeOutcome: (outcome) => set(state => ({
-    outcomes: state.outcomes.filter(o => o !== outcome)
-  })),
+  removeOutcome: async (outcome) => {
+    const trimmed = String(outcome || '').trim();
+    if (!trimmed) return;
+    const next = get().outcomes.filter(o => o !== trimmed);
+    await apiRequest('/api/v1/settings', { method: 'PATCH', body: JSON.stringify({ leadOutcomes: next }) });
+    set({ outcomes: next });
+  },
 
   purgeAll: async () => {
     const ids = get().leads.map(l => l.id);

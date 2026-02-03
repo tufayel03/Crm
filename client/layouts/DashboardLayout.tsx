@@ -24,7 +24,7 @@ const DashboardLayout: React.FC = () => {
   const { logout, user, initialize, isAuthenticated, isReady } = useAuthStore();
   const { connect, disconnect } = useCallStore();
   const { checkReminders, fetchMeetings } = useMeetingsStore();
-  const { fetchLeads } = useLeadsStore();
+  const { fetchLeads, fetchMeta: fetchLeadMeta } = useLeadsStore();
   const { fetchClients, fetchPayments } = useClientsStore();
   const { fetchTasks } = useTasksStore();
   const { fetchCampaigns, fetchTemplates } = useCampaignStore();
@@ -50,6 +50,7 @@ const DashboardLayout: React.FC = () => {
     const load = async () => {
       await Promise.allSettled([
         fetchSettings(),
+        fetchLeadMeta(),
         fetchLeads(),
         fetchClients(),
         fetchPayments(),
@@ -70,6 +71,7 @@ const DashboardLayout: React.FC = () => {
     const interval = setInterval(() => {
       Promise.allSettled([
         fetchSettings(),
+        fetchLeadMeta(),
         fetchLeads(),
         fetchClients(),
         fetchPayments(),

@@ -32,6 +32,9 @@ const DEFAULT_PERMISSIONS = {
   }
 };
 
+const DEFAULT_LEAD_STATUSES = ['New', 'Contacted', 'Qualified', 'Proposal', 'Negotiation', 'Closed Won', 'Closed Lost', 'Converted'];
+const DEFAULT_LEAD_OUTCOMES = ['Busy', 'Follow-up', 'Interested', 'Not Interested', 'Meeting Required'];
+
 const buildDefaultSettings = () => ({
   emailAccounts: [],
   generalSettings: {
@@ -59,6 +62,8 @@ const buildDefaultSettings = () => ({
   },
   ipRules: { mode: 'none', whitelist: [], blacklist: [] },
   campaignLimits: { hourly: 50, daily: 500 },
+  leadStatuses: DEFAULT_LEAD_STATUSES,
+  leadOutcomes: DEFAULT_LEAD_OUTCOMES,
   permissions: DEFAULT_PERMISSIONS
 });
 
@@ -87,6 +92,8 @@ exports.updateSettings = async (req, res) => {
     systemTemplates: { ...defaults.systemTemplates, ...settings.systemTemplates, ...(updates.systemTemplates || {}) },
     ipRules: { ...defaults.ipRules, ...settings.ipRules, ...(updates.ipRules || {}) },
     campaignLimits: { ...defaults.campaignLimits, ...settings.campaignLimits, ...(updates.campaignLimits || {}) },
+    leadStatuses: updates.leadStatuses ?? settings.leadStatuses ?? defaults.leadStatuses,
+    leadOutcomes: updates.leadOutcomes ?? settings.leadOutcomes ?? defaults.leadOutcomes,
     permissions: updates.permissions || settings.permissions || defaults.permissions
   };
 
