@@ -1,5 +1,7 @@
 const JSZip = require('jszip');
 const mongoose = require('mongoose');
+const path = require('path');
+const fs = require('fs/promises');
 
 const AuditLog = require('../models/AuditLog');
 const Campaign = require('../models/Campaign');
@@ -38,6 +40,48 @@ const buildMetadata = () => ({
   collections: collections.map(c => c.name)
 });
 
+const addUploadsToZip = async (zip, uploadsDir) => {
+  try {
+    const entries = await fs.readdir(uploadsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(uploadsDir, entry.name);
+      const zipPath = path.posix.join('uploads', entry.name);
+      if (entry.isDirectory()) {
+        await addUploadsToZip(zip, fullPath);
+      } else if (entry.isFile()) {
+        const data = await fs.readFile(fullPath);
+        // Keep path relative to uploads root
+        const relativePath = path.relative(uploadsDir, fullPath).split(path.sep).join('/');
+        zip.file(path.posix.join('uploads', relativePath), data);
+      }
+    }
+  } catch {
+    // ignore missing uploads dir
+  }
+};
+
+const restoreUploadsFromZip = async (zip, uploadsDir, mode) => {
+  const files = Object.keys(zip.files).filter(name => name.startsWith('uploads/') && !zip.files[name].dir);
+  if (files.length === 0) return;
+  await fs.mkdir(uploadsDir, { recursive: true });
+  for (const fileName of files) {
+    const relPath = fileName.replace(/^uploads\//, '');
+    const fullPath = path.join(uploadsDir, relPath);
+    const dir = path.dirname(fullPath);
+    await fs.mkdir(dir, { recursive: true });
+    try {
+      if (mode !== 'replace') {
+        await fs.access(fullPath);
+        continue;
+      }
+    } catch {
+      // file does not exist, proceed
+    }
+    const content = await zip.file(fileName).async('nodebuffer');
+    await fs.writeFile(fullPath, content);
+  }
+};
+
 const safeParse = (text) => {
   try {
     return JSON.parse(text);
@@ -72,6 +116,10 @@ exports.exportBackup = async (req, res) => {
 
   const meta = { ...buildMetadata(), collections: exportCollections };
   zip.file('metadata.json', JSON.stringify(meta, null, 2));
+
+  // Include local uploads if present
+  const uploadsDir = path.join(__dirname, '..', 'uploads');
+  await addUploadsToZip(zip, uploadsDir);
 
   const content = await zip.generateAsync({ type: 'nodebuffer' });
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -218,6 +266,8 @@ exports.importBackup = async (req, res) => {
     const summary = await merge(session);
     await session.commitTransaction();
     session.endSession();
+    const uploadsDir = path.join(__dirname, '..', 'uploads');
+    await restoreUploadsFromZip(zip, uploadsDir, mode);
     return res.json({ message: mode === 'replace' ? 'Database replaced successfully.' : 'Database merged successfully.', summary });
   } catch (err) {
     if (session) {
@@ -239,6 +289,8 @@ exports.importBackup = async (req, res) => {
           }
         }
         const summary = await merge(null);
+        const uploadsDir = path.join(__dirname, '..', 'uploads');
+        await restoreUploadsFromZip(zip, uploadsDir, mode);
         return res.json({ message: mode === 'replace' ? 'Database replaced successfully.' : 'Database merged successfully.', summary });
       } catch (retryErr) {
         return res.status(500).json({ message: retryErr.message || 'Restore failed.' });
