@@ -2,27 +2,78 @@
 
 const DEFAULT_TEMPLATES = [
   {
-    name: 'Invoice Notification',
-    subject: 'Invoice {{invoice_id}} from {{company_name}}',
-    htmlContent: '<p>Dear {{client_name}},</p><p>Your invoice {{invoice_id}} is ready.</p>',
-    createdBy: 'System'
-  },
-  {
     name: 'Meeting Scheduled',
     subject: 'Meeting Scheduled: {{meeting_title}}',
-    htmlContent: '<p>Hi {{participant_name}},</p><p>Your meeting is scheduled for {{date}} at {{time}}.</p>',
+    htmlContent: '',
+    designJson: JSON.stringify({
+      globalStyle: {
+        backgroundColor: '#F1F5F9',
+        contentWidth: 600,
+        contentBackgroundColor: '#FFFFFF',
+        fontFamily: 'Arial, Helvetica, sans-serif'
+      },
+      blocks: []
+    }),
     createdBy: 'System'
   },
   {
     name: 'Meeting Updated',
     subject: 'Updated: {{meeting_title}}',
-    htmlContent: '<p>Hi {{participant_name}},</p><p>Your meeting has been updated. New time: {{time}} on {{date}}.</p>',
+    htmlContent: '',
+    designJson: JSON.stringify({
+      globalStyle: {
+        backgroundColor: '#F1F5F9',
+        contentWidth: 600,
+        contentBackgroundColor: '#FFFFFF',
+        fontFamily: 'Arial, Helvetica, sans-serif'
+      },
+      blocks: []
+    }),
     createdBy: 'System'
   },
   {
     name: 'Meeting Cancelled',
     subject: 'Cancelled: {{meeting_title}}',
-    htmlContent: '<p>Hi {{participant_name}},</p><p>Your meeting {{meeting_title}} has been cancelled.</p>',
+    htmlContent: '',
+    designJson: JSON.stringify({
+      globalStyle: {
+        backgroundColor: '#F1F5F9',
+        contentWidth: 600,
+        contentBackgroundColor: '#FFFFFF',
+        fontFamily: 'Arial, Helvetica, sans-serif'
+      },
+      blocks: []
+    }),
+    createdBy: 'System'
+  },
+  {
+    name: 'Invoice Alert',
+    subject: 'Invoice {{invoice_id}} from {{company_name}}',
+    htmlContent: '',
+    designJson: JSON.stringify({
+      globalStyle: {
+        backgroundColor: '#F1F5F9',
+        contentWidth: 600,
+        contentBackgroundColor: '#FFFFFF',
+        fontFamily: 'Arial, Helvetica, sans-serif'
+      },
+      blocks: []
+    }),
+    createdBy: 'System'
+  },
+  {
+    name: 'Invoice Reminder',
+    subject: 'Reminder: Invoice {{invoice_id}} is due',
+    htmlContent: '',
+    designJson: JSON.stringify({
+      globalStyle: {
+        backgroundColor: '#F1F5F9',
+        contentWidth: 600,
+        contentBackgroundColor: '#FFFFFF',
+        fontFamily: 'Arial, Helvetica, sans-serif'
+      },
+      blocks: []
+    }),
     createdBy: 'System'
   }
 ];

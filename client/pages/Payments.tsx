@@ -321,7 +321,10 @@ const Payments: React.FC = () => {
 
   const sendInvoiceWithPdf = async (payment: Payment, client: Client) => {
       // Use visual template from Campaign Store
-      let template = templates.find(t => t.name === "Invoice Notification");
+        let template = templates.find(t => t.name === "Invoice Alert");
+        if (!template) {
+            template = templates.find(t => t.name === "Invoice Notification");
+        }
       
       // Fallback if deleted
       if (!template) {

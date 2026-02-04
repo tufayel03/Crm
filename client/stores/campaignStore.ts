@@ -58,45 +58,7 @@ const DEFAULT_STYLE = {
   fontFamily: 'Arial, Helvetica, sans-serif'
 };
 
-const createText = (text: string) => ({
-  id: Math.random().toString(36).substr(2, 9),
-  type: 'text',
-  content: { text },
-  style: { padding: '15px 30px', color: '#333', fontSize: 16, textAlign: 'left' }
-});
-
-const createButton = (text: string, url: string) => ({
-  id: Math.random().toString(36).substr(2, 9),
-  type: 'button',
-  content: { text, url },
-  style: { padding: '20px', backgroundColor: '#4B7F52', color: '#FFF', borderRadius: 8, textAlign: 'center' }
-});
-
-const createFooter = () => ({
-  id: Math.random().toString(36).substr(2, 9),
-  type: 'text',
-  content: { text: '<p style="font-size: 12px; color: #999; text-align: center;">(c) {{company_name}}. All rights reserved.</p>' },
-  style: { padding: '20px', backgroundColor: '#F1F5F9' }
-});
-
 const DEFAULT_TEMPLATES: EmailTemplate[] = [
-  {
-    id: 'temp-invoice',
-    name: 'Invoice Notification',
-    subject: 'Invoice {{invoice_id}} from {{company_name}}',
-    htmlContent: '',
-    designJson: JSON.stringify({
-      globalStyle: DEFAULT_STYLE,
-      blocks: [
-        createText('<h2 style="color: #4B7F52;">New Invoice Available</h2><p>Dear {{client_name}},</p><p>A new invoice <strong>{{invoice_id}}</strong> has been generated for your account.</p>'),
-        createText('<div style="background: #f8f9fa; padding: 15px; border-radius: 5px;"><strong>Amount:</strong> {{amount}}<br><strong>Due Date:</strong> {{due_date}}<br><strong>Service:</strong> {{service}}</div>'),
-        createButton('View & Pay Invoice', '{{invoice_link}}'),
-        createText('<p>Please arrange for payment at your earliest convenience.</p>'),
-        createFooter()
-      ]
-    }),
-    createdBy: 'System'
-  },
   {
     id: 'temp-meet-sched',
     name: 'Meeting Scheduled',
@@ -104,12 +66,7 @@ const DEFAULT_TEMPLATES: EmailTemplate[] = [
     htmlContent: '',
     designJson: JSON.stringify({
       globalStyle: DEFAULT_STYLE,
-      blocks: [
-        createText('<h2>Meeting Confirmed</h2><p>Hi {{participant_name}},</p><p>A new meeting has been scheduled with {{host_name}}.</p>'),
-        createText('<div style="border-left: 4px solid #4B7F52; padding-left: 15px; margin: 20px 0;"><p><strong>Topic:</strong> {{meeting_title}}</p><p><strong>Time:</strong> {{time}}</p><p><strong>Date:</strong> {{date}}</p><p><strong>Duration:</strong> {{duration}} min</p></div>'),
-        createButton('Join Meeting', '{{link}}'),
-        createFooter()
-      ]
+      blocks: []
     }),
     createdBy: 'System'
   },
@@ -120,12 +77,7 @@ const DEFAULT_TEMPLATES: EmailTemplate[] = [
     htmlContent: '',
     designJson: JSON.stringify({
       globalStyle: DEFAULT_STYLE,
-      blocks: [
-        createText('<h2 style="color: #F59E0B;">Meeting Details Changed</h2><p>Hi {{participant_name}},</p><p>The details for the following meeting have been updated:</p>'),
-        createText('<div style="background: #FFFBEB; padding: 15px; border-radius: 5px; border: 1px solid #FCD34D;"><p><strong>Topic:</strong> {{meeting_title}}</p><p><strong>New Time:</strong> {{time}}</p><p><strong>New Date:</strong> {{date}}</p></div>'),
-        createButton('Join Meeting', '{{link}}'),
-        createFooter()
-      ]
+      blocks: []
     }),
     createdBy: 'System'
   },
@@ -136,10 +88,29 @@ const DEFAULT_TEMPLATES: EmailTemplate[] = [
     htmlContent: '',
     designJson: JSON.stringify({
       globalStyle: DEFAULT_STYLE,
-      blocks: [
-        createText('<h2 style="color: #EF4444;">Meeting Cancelled</h2><p>Hi {{participant_name}},</p><p>The meeting <strong>{{meeting_title}}</strong> scheduled for {{date}} at {{time}} has been cancelled.</p><p>We apologize for any inconvenience.</p>'),
-        createFooter()
-      ]
+      blocks: []
+    }),
+    createdBy: 'System'
+  },
+  {
+    id: 'temp-invoice',
+    name: 'Invoice Alert',
+    subject: 'Invoice {{invoice_id}} from {{company_name}}',
+    htmlContent: '',
+    designJson: JSON.stringify({
+      globalStyle: DEFAULT_STYLE,
+      blocks: []
+    }),
+    createdBy: 'System'
+  },
+  {
+    id: 'temp-invoice-reminder',
+    name: 'Invoice Reminder',
+    subject: 'Reminder: Invoice {{invoice_id}} is due',
+    htmlContent: '',
+    designJson: JSON.stringify({
+      globalStyle: DEFAULT_STYLE,
+      blocks: []
     }),
     createdBy: 'System'
   }

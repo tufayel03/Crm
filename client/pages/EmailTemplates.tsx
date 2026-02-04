@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useCampaignStore } from '../stores/campaignStore';
 import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore'; // Import Settings
+import { useNotificationStore } from '../stores/notificationStore';
 import { 
   FileText, Plus, Save, Eye, X, Monitor, Smartphone, Image as ImageIcon, Layers, Copy, ChevronUp, ChevronDown, Trash2
 } from 'lucide-react';
@@ -158,6 +159,7 @@ const EmailTemplates: React.FC = () => {
   const { templates, addTemplate, updateTemplate, removeTemplate } = useCampaignStore();
   const { user } = useAuthStore();
   const { generalSettings } = useSettingsStore(); // Get settings for logo
+  const { addNotification } = useNotificationStore();
   
   // State
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -165,9 +167,12 @@ const EmailTemplates: React.FC = () => {
   const [globalStyle, setGlobalStyle] = useState<GlobalStyle>(DEFAULT_GLOBAL_STYLE);
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [savedBlocks, setSavedBlocks] = useState<EditorBlock[]>([]);
   
   const [metadata, setMetadata] = useState({ name: '', subject: '' });
+  const [templatePurpose, setTemplatePurpose] = useState('Custom');
   const [editorMode, setEditorMode] = useState<'visual' | 'code'>('visual');
   const [rawHtml, setRawHtml] = useState('');
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
@@ -180,6 +185,16 @@ const EmailTemplates: React.FC = () => {
   const [rightPanelWidth, setRightPanelWidth] = useState(320);
   const [isResizingRight, setIsResizingRight] = useState(false);
   const rightPanelRef = useRef<HTMLDivElement | null>(null);
+  const [deleteTemplateId, setDeleteTemplateId] = useState<string | null>(null);
+
+  const TEMPLATE_PURPOSES: { label: string; name: string; defaultSubject: string }[] = [
+    { label: 'Custom', name: '', defaultSubject: '' },
+    { label: 'Meeting Scheduled', name: 'Meeting Scheduled', defaultSubject: 'Meeting Scheduled: {{meeting_title}}' },
+    { label: 'Meeting Updated', name: 'Meeting Updated', defaultSubject: 'Updated: {{meeting_title}}' },
+    { label: 'Meeting Cancelled', name: 'Meeting Cancelled', defaultSubject: 'Cancelled: {{meeting_title}}' },
+    { label: 'Invoice Alert', name: 'Invoice Alert', defaultSubject: 'Invoice {{invoice_id}} from {{company_name}}' },
+    { label: 'Invoice Reminder', name: 'Invoice Reminder', defaultSubject: 'Reminder: Invoice {{invoice_id}} is due' }
+  ];
 
   // Load Template
   useEffect(() => {
@@ -187,6 +202,8 @@ const EmailTemplates: React.FC = () => {
       const template = templates.find(t => t.id === selectedId);
       if (template) {
         setMetadata({ name: template.name, subject: template.subject });
+        const purpose = TEMPLATE_PURPOSES.find(p => p.name === template.name);
+        setTemplatePurpose(purpose ? purpose.label : 'Custom');
         if (template.designJson) {
           try {
             const parsed = JSON.parse(template.designJson);
@@ -214,6 +231,7 @@ const EmailTemplates: React.FC = () => {
       }
     } else {
       setMetadata({ name: '', subject: '' });
+      setTemplatePurpose('Custom');
       setBlocks([]);
       setActiveBlockId(null);
       setGlobalStyle(DEFAULT_GLOBAL_STYLE);
@@ -629,7 +647,11 @@ const EmailTemplates: React.FC = () => {
 
   // --- Save ---
   const handleSave = async () => {
-      if (!metadata.name) return alert("Please name your template");
+      if (!metadata.name) {
+        setSaveError('Template name is required.');
+        return;
+      }
+      setSaveError(null);
       
       // Pass Logo URL to compileHtml
       const html = editorMode === 'visual' ? compileHtml(blocks, globalStyle, assets, generalSettings.logoUrl) : rawHtml;
@@ -645,27 +667,37 @@ const EmailTemplates: React.FC = () => {
 
       const isMongoId = (value: string | null) => !!value && /^[a-f0-9]{24}$/i.test(value);
       const existing = selectedId ? templates.find(t => t.id === selectedId) : null;
-      if (selectedId && existing && isMongoId(selectedId)) {
-          await updateTemplate(selectedId, templateData);
-      } else {
-          const created = await addTemplate(templateData);
-          setSelectedId(created.id);
+      setIsSaving(true);
+      try {
+        if (selectedId && existing && isMongoId(selectedId)) {
+            await updateTemplate(selectedId, templateData);
+        } else {
+            const created = await addTemplate(templateData);
+            setSelectedId(created.id);
+        }
+        addNotification('success', 'Template saved.');
+      } finally {
+        setIsSaving(false);
       }
-      alert("Saved!");
   };
 
-  const handleDeleteTemplate = async (id: string) => {
-    const template = templates.find(t => t.id === id);
-    if (!template) return;
-    if (!window.confirm(`Delete template "${template.name}"? This cannot be undone.`)) return;
-    await removeTemplate(id);
-    if (selectedId === id) {
+  const handleDeleteTemplate = (id: string) => {
+    setDeleteTemplateId(id);
+  };
+
+  const confirmDeleteTemplate = async () => {
+    if (!deleteTemplateId) return;
+    const template = templates.find(t => t.id === deleteTemplateId);
+    await removeTemplate(deleteTemplateId);
+    if (selectedId === deleteTemplateId) {
       setSelectedId(null);
       setBlocks([]);
       setActiveBlockId(null);
       setGlobalStyle(DEFAULT_GLOBAL_STYLE);
       setEditorMode('visual');
     }
+    setDeleteTemplateId(null);
+    addNotification('success', `Template ${template?.name ? `"${template.name}" ` : ''}deleted.`);
   };
 
   return (
@@ -691,6 +723,9 @@ const EmailTemplates: React.FC = () => {
               <div className="flex items-center justify-between gap-2">
                 <button onClick={() => setSelectedId(t.id)} className="flex-1 text-left">
                   <p className="font-bold text-sm truncate">{t.name}</p>
+                  {isSaving && selectedId === t.id && (
+                    <p className="text-[10px] text-textMuted mt-0.5">Saving...</p>
+                  )}
                 </button>
                 <button
                   onClick={() => handleDeleteTemplate(t.id)}
@@ -709,8 +744,31 @@ const EmailTemplates: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0">
          <div className="h-16 bg-white border-b border-border flex justify-between items-center px-6 shadow-sm z-20">
              <div className="flex flex-col">
-                 <input type="text" value={metadata.name} onChange={(e) => setMetadata({...metadata, name: e.target.value})} placeholder="Template Name" className="text-sm font-bold bg-transparent outline-none" />
-                 <input type="text" value={metadata.subject} onChange={(e) => setMetadata({...metadata, subject: e.target.value})} placeholder="Subject Line" className="text-xs text-textSecondary bg-transparent outline-none" />
+                 <div className="flex items-center gap-3">
+                   <select
+                     value={templatePurpose}
+                     onChange={(e) => {
+                       const selected = e.target.value;
+                       setTemplatePurpose(selected);
+                       const preset = TEMPLATE_PURPOSES.find(p => p.label === selected);
+                       if (preset && preset.name) {
+                         setMetadata(prev => ({
+                           name: preset.name,
+                           subject: prev.subject ? prev.subject : preset.defaultSubject
+                         }));
+                       } else {
+                         setMetadata(prev => ({ ...prev, name: prev.name || '' }));
+                       }
+                     }}
+                     className="text-xs border border-border rounded px-2 py-1 bg-white text-textSecondary"
+                   >
+                     {TEMPLATE_PURPOSES.map(p => (
+                       <option key={p.label} value={p.label}>{p.label}</option>
+                     ))}
+                   </select>
+                   <input type="text" value={metadata.name} onChange={(e) => { setMetadata({...metadata, name: e.target.value}); setTemplatePurpose('Custom'); setSaveError(null); }} placeholder="Template Name" className="text-sm font-bold bg-transparent outline-none" />
+                 </div>
+                 <input type="text" value={metadata.subject} onChange={(e) => { setMetadata({...metadata, subject: e.target.value}); setSaveError(null); }} placeholder="Subject Line" className="text-xs text-textSecondary bg-transparent outline-none" />
              </div>
              <div className="flex items-center gap-3">
                  <button onClick={() => setIsAssetManagerOpen(true)} className="flex items-center gap-2 px-3 py-2 bg-slate-100 border border-border text-textSecondary font-semibold rounded-lg text-xs hover:bg-slate-200"><ImageIcon size={14}/> Assets</button>
@@ -731,8 +789,13 @@ const EmailTemplates: React.FC = () => {
                      <Copy size={16}/> Save Block
                    </button>
                  )}
+                 {saveError && (
+                   <span className="text-xs text-danger font-bold">{saveError}</span>
+                 )}
                  <button onClick={() => setIsPreviewOpen(true)} className="flex items-center gap-2 px-4 py-2 border border-border text-textSecondary font-semibold rounded-lg text-sm"><Eye size={16}/> Preview</button>
-                 <button onClick={handleSave} className="flex items-center gap-2 px-6 py-2 bg-primary text-darkGreen font-bold rounded-lg shadow-sm text-sm"><Save size={16}/> Save</button>
+                 <button onClick={handleSave} disabled={isSaving} className="flex items-center gap-2 px-6 py-2 bg-primary text-darkGreen font-bold rounded-lg shadow-sm text-sm disabled:opacity-60 disabled:cursor-not-allowed">
+                   <Save size={16}/> {isSaving ? 'Saving...' : 'Save'}
+                 </button>
              </div>
          </div>
 
@@ -885,6 +948,31 @@ const EmailTemplates: React.FC = () => {
             </div>
             <div className="flex-1 bg-slate-200 p-8 flex justify-center overflow-y-auto">
                <iframe title="preview" srcDoc={editorMode === 'visual' ? compileHtml(blocks, globalStyle, assets, generalSettings.logoUrl) : rawHtml} style={{ width: previewMode === 'mobile' ? '375px' : '100%', height: '100%', border: 'none', background: 'white' }} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteTemplateId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+            <h3 className="text-lg font-bold text-textPrimary mb-2">Delete template?</h3>
+            <p className="text-sm text-textSecondary mb-6">
+              This will permanently delete the template. This action cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteTemplateId(null)}
+                className="flex-1 py-2 border border-border rounded-xl font-bold text-textSecondary hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteTemplate}
+                className="flex-1 py-2 bg-danger text-white rounded-xl font-bold hover:bg-red-600 transition-colors"
+              >
+                Delete
+              </button>
             </div>
           </div>
         </div>

@@ -377,4 +377,29 @@ Two options:
 
 When deploying, keep this value set to your production domain (e.g. https://yourdomain.com) so tracking works without any extra changes.
 
+## Email Template Tags
+
+Use these placeholders in the Email Template Builder (Text/HTML/Custom blocks). They will be replaced when emails are sent.
+
+| Tag | Description |
+|---|---|
+| `{{company_logo}}` | Company logo image (from Settings → General). |
+| `{{company_name}}` | Company name. |
+| `{{company_address}}` | Company address. |
+| `{{company_phone}}` | Company phone number. |
+| `{{company_website}}` | Company website URL. |
+| `{{lead_name}}` | Full name of the lead/recipient. |
+| `{{lead_first_name}}` | First name of the lead/recipient. |
+| `{{unsubscribe_link}}` | Unsubscribe link (if your template uses it). |
+| `{{client_name}}` | Client name. |
+| `{{invoice_id}}` | Invoice ID. |
+| `{{amount}}` | Invoice amount. |
+| `{{due_date}}` | Invoice due date. |
+| `{{service}}` | Service name/description. |
+| `{{meeting_title}}` | Meeting title. |
+| `{{time}}` | Meeting time. |
+| `{{date}}` | Meeting date. |
+| `{{link}}` | Meeting link. |
+| `{{host_name}}` | Host (team member) name. |
+
 
