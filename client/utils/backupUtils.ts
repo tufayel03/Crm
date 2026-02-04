@@ -81,74 +81,107 @@ export const mergeStringArrays = (current: string[], incoming: string[]) => {
     return Array.from(new Set([...curr, ...inc]));
 };
 
-export const exportDatabase = async () => {
-  const res = await fetch('/api/v1/backup/export', {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${localStorage.getItem('matlance_token') || ''}`
-    }
+export const exportDatabase = async (
+  onProgress?: (percent: number) => void,
+  collections?: string[]
+) => {
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const query = collections && collections.length > 0
+      ? `?collections=${encodeURIComponent(JSON.stringify(collections))}`
+      : '';
+    xhr.open('GET', `/api/v1/backup/export${query}`, true);
+    xhr.responseType = 'blob';
+    xhr.setRequestHeader('Authorization', `Bearer ${localStorage.getItem('matlance_token') || ''}`);
+
+    if (onProgress) onProgress(5);
+
+    xhr.onprogress = (event) => {
+      if (!onProgress) return;
+      if (event.lengthComputable && event.total > 0) {
+        const percent = Math.min(95, Math.round((event.loaded / event.total) * 95));
+        onProgress(percent);
+      } else {
+        onProgress(30);
+      }
+    };
+
+    xhr.onloadstart = () => {
+      if (onProgress) onProgress(10);
+    };
+
+    xhr.onerror = () => {
+      reject(new Error('Failed to export database.'));
+    };
+
+    xhr.onload = () => {
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(new Error('Failed to export database.'));
+        return;
+      }
+      const blob = xhr.response;
+      if (!blob || blob.size === 0) {
+        reject(new Error('Export failed. Empty backup file.'));
+        return;
+      }
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      downloadBlob(blob, `Matlance_Full_Backup_${timestamp}.zip`);
+      if (onProgress) onProgress(100);
+      resolve();
+    };
+
+    xhr.send();
   });
-
-  if (!res.ok) {
-    let message = 'Failed to export database.';
-    try {
-      const text = await res.text();
-      if (text) message = text;
-    } catch {
-      // ignore
-    }
-    throw new Error(message);
-  }
-
-  const contentType = res.headers.get('content-type') || '';
-  if (!contentType.includes('application/zip')) {
-    const text = await res.text();
-    throw new Error(text || 'Export failed. Server did not return a ZIP file.');
-  }
-
-  const blob = await res.blob();
-  if (!blob || blob.size === 0) {
-    throw new Error('Export failed. Empty backup file.');
-  }
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  downloadBlob(blob, `Matlance_Full_Backup_${timestamp}.zip`);
 };
 
 export const importDatabase = async (
     file: File, 
-    onProgress?: (percent: number) => void
-): Promise<{ success: boolean; message: string }> => {
+    onProgress?: (percent: number) => void,
+    mode: 'merge' | 'replace' = 'merge',
+    collections?: string[]
+): Promise<{ success: boolean; message: string; summary?: Record<string, { added: number; skipped: number }> }> => {
   try {
-    if (onProgress) onProgress(10);
-
-    const form = new FormData();
-    form.append('file', file);
-
-    const res = await fetch('/api/v1/backup/import', {
-      method: 'POST',
-      body: form,
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('matlance_token') || ''}`
+    return await new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      const form = new FormData();
+      form.append('file', file);
+      if (collections && collections.length > 0) {
+        form.append('collections', JSON.stringify(collections));
       }
+
+      xhr.open('POST', `/api/v1/backup/import?mode=${mode}`, true);
+      xhr.responseType = 'json';
+      xhr.setRequestHeader('Authorization', `Bearer ${localStorage.getItem('matlance_token') || ''}`);
+
+      if (xhr.upload) {
+        xhr.upload.onprogress = (event) => {
+          if (!onProgress) return;
+          if (event.lengthComputable && event.total > 0) {
+            const percent = Math.min(80, Math.round((event.loaded / event.total) * 80));
+            onProgress(percent);
+          } else {
+            onProgress(30);
+          }
+        };
+      }
+
+      xhr.onerror = () => {
+        resolve({ success: false, message: 'Restore failed.' });
+      };
+
+      xhr.onload = () => {
+        if (xhr.status < 200 || xhr.status >= 300) {
+          const message = (xhr.response && xhr.response.message) ? xhr.response.message : 'Restore failed.';
+          resolve({ success: false, message });
+          return;
+        }
+        if (onProgress) onProgress(100);
+        const data = xhr.response;
+        resolve({ success: true, message: (data && data.message) ? data.message : 'Database restored successfully.', summary: data && data.summary ? data.summary : undefined });
+      };
+
+      xhr.send(form);
     });
-
-    if (onProgress) onProgress(70);
-
-    if (!res.ok) {
-      let message = 'Restore failed.';
-      try {
-        const text = await res.text();
-        if (text) message = text;
-      } catch {
-        // ignore
-      }
-      return { success: false, message };
-    }
-
-    const data = await res.json();
-    if (onProgress) onProgress(100);
-    return { success: true, message: data.message || 'Database restored successfully.' };
-
   } catch (error: any) {
     console.error("Restoration Error:", error);
     return { success: false, message: `Restoration failed: ${error.message}` };

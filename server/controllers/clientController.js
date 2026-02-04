@@ -1,5 +1,7 @@
 ﻿const Client = require('../models/Client');
 const Lead = require('../models/Lead');
+const path = require('path');
+const fs = require('fs/promises');
 const { getNextSequence } = require('../utils/counter');
 const { generateUniqueShortId } = require('../utils/ids');
 const { uploadToS3, deleteFromS3, isS3Configured } = require('../utils/s3');
@@ -142,21 +144,36 @@ exports.uploadDocument = async (req, res) => {
   if (!client) return res.status(404).json({ message: 'Client not found' });
   if (!req.file) return res.status(400).json({ message: 'File required' });
 
-  if (!isS3Configured()) {
-    return res.status(500).json({ message: 'S3 not configured' });
-  }
-
   const category = req.body.category || 'contract';
-  const key = `clients/${client.id}/${category}/${Date.now()}-${req.file.originalname}`;
-  const upload = await uploadToS3({ buffer: req.file.buffer, contentType: req.file.mimetype, key });
+  const safeName = String(req.file.originalname || 'file').replace(/[^\w.\-]+/g, '_');
+
+  let upload = null;
+  let localPath = null;
+  let publicUrl = null;
+  let key = null;
+
+  if (isS3Configured()) {
+    key = `clients/${client.id}/${category}/${Date.now()}-${safeName}`;
+    upload = await uploadToS3({ buffer: req.file.buffer, contentType: req.file.mimetype, key });
+    publicUrl = upload.url;
+  } else {
+    const uploadRoot = path.join(__dirname, '..', 'uploads');
+    const relativePath = path.join('clients', client.id, category, `${Date.now()}-${safeName}`);
+    const fullPath = path.join(uploadRoot, relativePath);
+    await fs.mkdir(path.dirname(fullPath), { recursive: true });
+    await fs.writeFile(fullPath, req.file.buffer);
+    localPath = relativePath.replace(/\\/g, '/');
+    publicUrl = `${req.protocol}://${req.get('host')}/uploads/${localPath}`;
+  }
 
   const newDoc = {
     id: Math.random().toString(36).substring(2, 9),
     name: req.file.originalname,
     type: req.file.mimetype,
     size: req.file.size,
-    url: upload.url,
-    key: upload.key,
+    url: publicUrl,
+    key: upload ? upload.key : null,
+    localPath,
     uploadDate: new Date(),
     category
   };
@@ -181,6 +198,14 @@ exports.removeDocument = async (req, res) => {
 
   if (doc && doc.key) {
     await deleteFromS3(doc.key);
+  }
+  if (doc && doc.localPath) {
+    const fullPath = path.join(__dirname, '..', 'uploads', doc.localPath);
+    try {
+      await fs.unlink(fullPath);
+    } catch {
+      // ignore missing files
+    }
   }
 
   if (category === 'invoice') {

@@ -5,7 +5,7 @@ const { exportBackup, importBackup } = require('../controllers/backupController'
 const asyncHandler = require('../utils/asyncHandler');
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage() });
 
 router.use(protect, authorize('admin', 'manager'));
 

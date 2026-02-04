@@ -4,6 +4,9 @@ const dotenv = require('dotenv');
 const helmet = require('helmet');
 const compression = require('compression');
 const morgan = require('morgan');
+const path = require('path');
+const fs = require('fs/promises');
+const { startUploadsMonitor } = require('./utils/uploadsMonitor');
 const connectDB = require('./config/db');
 const { ensureAdminUser } = require('./config/seed');
 const { errorLogger } = require('./middleware/errorLogger');
@@ -42,9 +45,12 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(express.json({ limit: '25mb' }));
+app.use(express.json({ limit: '95mb' }));
 app.use(express.urlencoded({ extended: false }));
 app.use(errorLogger);
+
+// Serve locally stored uploads
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Route Imports
 app.use('/api/v1/auth', require('./routes/authRoutes'));
@@ -79,5 +85,18 @@ server.listen(PORT, async () => {
   await ensureAdminUser();
   startMailboxSync({ intervalMs: (parseInt(process.env.MAIL_SYNC_MINUTES || '5', 10) * 60 * 1000) || (5 * 60 * 1000) });
   startCampaignRunner({ intervalMs: 30000, batchSize: 20 });
+  const uploadsDir = path.join(__dirname, 'uploads');
+  try {
+    await fs.mkdir(uploadsDir, { recursive: true });
+  } catch {
+    // ignore
+  }
+  const warnGb = parseFloat(process.env.UPLOADS_WARN_GB || '5');
+  const checkMinutes = parseInt(process.env.UPLOADS_CHECK_MINUTES || '60', 10);
+  startUploadsMonitor({
+    uploadsDir,
+    warnBytes: warnGb * 1024 * 1024 * 1024,
+    intervalMs: checkMinutes * 60 * 1000
+  });
   console.log(`Server running on port ${PORT}`);
 });

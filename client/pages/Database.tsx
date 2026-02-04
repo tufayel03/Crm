@@ -28,9 +28,50 @@ const DatabasePage: React.FC = () => {
   const [isRestoring, setIsRestoring] = useState(false);
   const [restoreProgress, setRestoreProgress] = useState(0);
   const [restoreStatus, setRestoreStatus] = useState<{type: 'success' | 'error', msg: string} | null>(null);
+  const [restoreSummary, setRestoreSummary] = useState<Record<string, { added: number; skipped: number }> | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [restoreMode, setRestoreMode] = useState<'merge' | 'replace'>('merge');
+  const [importAll, setImportAll] = useState(true);
+  const [selectedCollections, setSelectedCollections] = useState<string[]>([
+    'dashboard',
+    'mailbox',
+    'analytics',
+    'leads',
+    'clients',
+    'services',
+    'tasks',
+    'meetings',
+    'templates',
+    'campaigns',
+    'payments',
+    'database',
+    'error_logs',
+    'settings'
+  ]);
+  const [exportAll, setExportAll] = useState(true);
+  const [selectedExportCollections, setSelectedExportCollections] = useState<string[]>([
+    'dashboard',
+    'mailbox',
+    'analytics',
+    'leads',
+    'clients',
+    'services',
+    'tasks',
+    'meetings',
+    'templates',
+    'campaigns',
+    'payments',
+    'database',
+    'error_logs',
+    'settings'
+  ]);
+
+  // Export State
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
+  const [exportStatus, setExportStatus] = useState<{type: 'success' | 'error', msg: string} | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -50,6 +91,7 @@ const DatabasePage: React.FC = () => {
     { id: 'tasks', label: 'Tasks', icon: CheckSquare },
     { id: 'meetings', label: 'Meetings', icon: Video },
     { id: 'campaigns', label: 'Campaigns', icon: Send },
+    { id: 'templates', label: 'Templates', icon: FileArchive },
     { id: 'backup', label: 'Backup & Restore', icon: Archive },
   ];
 
@@ -133,14 +175,53 @@ const DatabasePage: React.FC = () => {
       } catch (e: any) { alert("Import failed: " + e.message); }
   };
 
+  const handleImportTemplates = async (file: File) => {
+      try {
+          const data = await importFromJson(file);
+          const templatesList = Array.isArray(data) ? data : (data.templates || []);
+          const mergedTemps = mergeArrays(campaignStore.templates, templatesList);
+          useCampaignStore.setState({ templates: mergedTemps });
+      } catch (e: any) { alert("Import failed: " + e.message); }
+  };
+
   // --- Bulk Backup Handlers ---
 
   const handleBackup = async () => {
     try {
-        await exportDatabase();
+        setIsExporting(true);
+        setExportProgress(0);
+        setExportStatus(null);
+        const exportMap: Record<string, string | string[]> = {
+          dashboard: 'users',
+          mailbox: 'mail',
+          analytics: 'campaigns',
+          leads: 'leads',
+          clients: 'clients',
+          services: 'services',
+          tasks: 'tasks',
+          meetings: 'meetings',
+          templates: 'templates',
+          campaigns: 'campaigns',
+          payments: 'payments',
+          database: 'counters',
+          error_logs: 'audit',
+          settings: 'settings'
+        };
+        const collectionsToExport = exportAll
+          ? undefined
+          : Array.from(new Set(
+              selectedExportCollections.flatMap((key) => {
+                const mapped = exportMap[key];
+                return Array.isArray(mapped) ? mapped : (mapped ? [mapped] : []);
+              })
+            ));
+        await exportDatabase((percent) => setExportProgress(percent), collectionsToExport);
+        setExportStatus({ type: 'success', msg: 'Backup generated successfully.' });
     } catch (e) {
         console.error(e);
-        setRestoreStatus({ type: 'error', msg: "Failed to generate backup. See console." });
+        setExportStatus({ type: 'error', msg: "Failed to generate backup. See console." });
+    } finally {
+        setIsExporting(false);
     }
   };
 
@@ -173,17 +254,44 @@ const DatabasePage: React.FC = () => {
       setIsRestoring(true);
       setRestoreProgress(0);
       setRestoreStatus(null);
+      setRestoreSummary(null);
       setShowConfirm(false);
 
       try {
+          const collectionMap: Record<string, string | string[]> = {
+            dashboard: 'users',
+            mailbox: 'mail',
+            analytics: 'campaigns',
+            leads: 'leads',
+            clients: 'clients',
+            services: 'services',
+            tasks: 'tasks',
+            meetings: 'meetings',
+            templates: 'templates',
+            campaigns: 'campaigns',
+            payments: 'payments',
+            database: 'counters',
+            error_logs: 'audit',
+            settings: 'settings'
+          };
+
+          const collectionsToImport = importAll
+            ? undefined
+            : Array.from(new Set(
+                selectedCollections.flatMap((key) => {
+                  const mapped = collectionMap[key];
+                  return Array.isArray(mapped) ? mapped : (mapped ? [mapped] : []);
+                })
+              ));
           const result = await importDatabase(selectedFile, (percent) => {
               setRestoreProgress(percent);
-          });
+          }, restoreMode, collectionsToImport);
           
           setRestoreStatus({
               type: result.success ? 'success' : 'error',
               msg: result.message
           });
+          if (result.summary) setRestoreSummary(result.summary);
           
           if (result.success) {
               setTimeout(() => {
@@ -230,6 +338,23 @@ const DatabasePage: React.FC = () => {
           }
       }
   };
+
+  const collectionOptions = [
+    { id: 'dashboard', label: 'Dashboard' },
+    { id: 'mailbox', label: 'Mailbox' },
+    { id: 'analytics', label: 'Analytics' },
+    { id: 'leads', label: 'Leads' },
+    { id: 'clients', label: 'Clients' },
+    { id: 'services', label: 'Services' },
+    { id: 'tasks', label: 'Tasks' },
+    { id: 'meetings', label: 'Meetings' },
+    { id: 'templates', label: 'Templates' },
+    { id: 'campaigns', label: 'Campaigns' },
+    { id: 'payments', label: 'Payments' },
+    { id: 'database', label: 'Database' },
+    { id: 'error_logs', label: 'Error Logs' },
+    { id: 'settings', label: 'Settings' }
+  ];
 
   return (
     <div className="space-y-6">
@@ -347,7 +472,7 @@ const DatabasePage: React.FC = () => {
              />
            )}
 
-           {activeTab === 'campaigns' && (
+          {activeTab === 'campaigns' && (
              <div className="space-y-8">
                 <DataSection 
                     title="Email Campaigns & Templates"
@@ -361,6 +486,20 @@ const DatabasePage: React.FC = () => {
                     itemName="Campaign Data"
                 />
              </div>
+           )}
+
+           {activeTab === 'templates' && (
+             <DataSection 
+                title="Email Templates"
+                description="Manage saved email templates for campaigns and notifications."
+                count={campaignStore.templates.length}
+                data={campaignStore.templates}
+                onPurge={campaignStore.purgeAllTemplates}
+                onExport={() => exportToJson({ templates: campaignStore.templates }, 'matlance_templates.json')}
+                onImport={handleImportTemplates}
+                icon={FileArchive}
+                itemName="Templates"
+             />
            )}
 
            {/* BACKUP & RESTORE TAB */}
@@ -386,10 +525,67 @@ const DatabasePage: React.FC = () => {
                             </p>
                             <button 
                                 onClick={handleBackup}
-                                className="px-6 py-3 bg-darkGreen text-white font-bold rounded-xl hover:bg-opacity-90 shadow-lg shadow-darkGreen/10 transition-all w-full"
+                                disabled={isExporting}
+                                className="px-6 py-3 bg-darkGreen text-white font-bold rounded-xl hover:bg-opacity-90 shadow-lg shadow-darkGreen/10 transition-all w-full disabled:opacity-60 disabled:cursor-not-allowed"
                             >
-                                Download Database
+                                {isExporting ? 'Generating...' : 'Download Database'}
                             </button>
+                            {!isExporting && (
+                              <div className="w-full mt-4 p-3 border border-border rounded-lg bg-white text-xs text-textSecondary">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="font-bold text-textPrimary">What to Export</div>
+                                  <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={exportAll}
+                                      onChange={(e) => setExportAll(e.target.checked)}
+                                    />
+                                    Export all
+                                  </label>
+                                </div>
+                                <div className={`grid grid-cols-1 md:grid-cols-2 gap-2 ${exportAll ? 'opacity-50 pointer-events-none' : ''}`}>
+                                  {collectionOptions.map(option => (
+                                    <label key={option.id} className="flex items-center gap-2 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedExportCollections.includes(option.id)}
+                                        onChange={(e) => {
+                                          setSelectedExportCollections(prev => {
+                                            if (e.target.checked) return [...prev, option.id];
+                                            return prev.filter(id => id !== option.id);
+                                          });
+                                        }}
+                                      />
+                                      {option.label}
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {isExporting && (
+                                <div className="w-full mt-4">
+                                    <div className="flex justify-between text-xs font-bold text-textSecondary mb-1">
+                                        <span>Creating ZIP...</span>
+                                        <span>{exportProgress}%</span>
+                                    </div>
+                                    <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                                        <div 
+                                            className="h-full bg-primary transition-all duration-300 ease-out" 
+                                            style={{ width: `${exportProgress}%` }}
+                                        ></div>
+                                    </div>
+                                </div>
+                            )}
+                            {exportStatus && !isExporting && (
+                              <div className={`mt-4 w-full p-3 rounded-lg border text-xs flex items-start gap-2 ${
+                                exportStatus.type === 'success'
+                                  ? 'bg-green-50 border-green-200 text-green-800'
+                                  : 'bg-red-50 border-red-200 text-red-800'
+                              }`}>
+                                {exportStatus.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                                <div className="text-left">{exportStatus.msg}</div>
+                              </div>
+                            )}
                         </div>
 
                         {/* Import Card with Drag & Drop */}
@@ -452,6 +648,67 @@ const DatabasePage: React.FC = () => {
                                 </div>
                             )}
 
+                            {/* Restore Mode */}
+                            {selectedFile && !showConfirm && !isRestoring && (
+                              <div className="w-full mt-4 p-3 border border-border rounded-lg bg-white text-xs text-textSecondary">
+                                <div className="font-bold text-textPrimary mb-2">Import Mode</div>
+                                <label className="flex items-center gap-2 mb-2 cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name="restoreMode"
+                                    value="merge"
+                                    checked={restoreMode === 'merge'}
+                                    onChange={() => setRestoreMode('merge')}
+                                  />
+                                  Merge (skip duplicates)
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name="restoreMode"
+                                    value="replace"
+                                    checked={restoreMode === 'replace'}
+                                    onChange={() => setRestoreMode('replace')}
+                                  />
+                                  Replace (delete existing first)
+                                </label>
+                              </div>
+                            )}
+
+                            {/* Collection Selection */}
+                            {selectedFile && !showConfirm && !isRestoring && (
+                              <div className="w-full mt-4 p-3 border border-border rounded-lg bg-white text-xs text-textSecondary">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="font-bold text-textPrimary">What to Import</div>
+                                  <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={importAll}
+                                      onChange={(e) => setImportAll(e.target.checked)}
+                                    />
+                                    Import all
+                                  </label>
+                                </div>
+                                <div className={`grid grid-cols-1 md:grid-cols-2 gap-2 ${importAll ? 'opacity-50 pointer-events-none' : ''}`}>
+                                  {collectionOptions.map(option => (
+                                    <label key={option.id} className="flex items-center gap-2 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedCollections.includes(option.id)}
+                                        onChange={(e) => {
+                                          setSelectedCollections(prev => {
+                                            if (e.target.checked) return [...prev, option.id];
+                                            return prev.filter(id => id !== option.id);
+                                          });
+                                        }}
+                                      />
+                                      {option.label}
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
                             {/* Confirmation UI (Replaces window.confirm for sandbox compatibility) */}
                             {showConfirm && (
                                 <div className="w-full bg-yellow-50 border border-yellow-200 rounded-xl p-4 animate-in fade-in zoom-in-95">
@@ -459,7 +716,10 @@ const DatabasePage: React.FC = () => {
                                         <AlertTriangle size={18} /> Confirm Restore
                                     </div>
                                     <p className="text-xs text-yellow-800 mb-4 text-left">
-                                        This will merge the contents of <b>{selectedFile?.name}</b> into your current database. Existing records will be preserved; new ones will be added.
+                                        {restoreMode === 'replace'
+                                          ? <>This will <b>replace</b> your current database with the contents of <b>{selectedFile?.name}</b>. Existing records will be removed.</>
+                                          : <>This will merge the contents of <b>{selectedFile?.name}</b> into your current database. Existing records will be preserved; new ones will be added.</>
+                                        }
                                     </p>
                                     <div className="flex gap-2">
                                         <button 
@@ -472,7 +732,7 @@ const DatabasePage: React.FC = () => {
                                             onClick={executeRestore}
                                             className="flex-1 py-2 bg-yellow-500 text-white font-bold rounded-lg text-xs hover:bg-yellow-600 shadow-sm"
                                         >
-                                            Yes, Merge Data
+                                            {restoreMode === 'replace' ? 'Yes, Replace Data' : 'Yes, Merge Data'}
                                         </button>
                                     </div>
                                 </div>
@@ -507,6 +767,19 @@ const DatabasePage: React.FC = () => {
                                 <p className="text-xs mt-1">{restoreStatus.msg}</p>
                             </div>
                         </div>
+                    )}
+                    {restoreSummary && restoreStatus?.type === 'success' && (
+                      <div className="mt-4 p-4 rounded-xl border border-border bg-white">
+                        <div className="text-sm font-bold text-textPrimary mb-2">Import Summary</div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-textSecondary">
+                          {Object.entries(restoreSummary).map(([name, stats]) => (
+                            <div key={name} className="flex items-center justify-between border border-border rounded-lg px-3 py-2">
+                              <span className="font-semibold text-textPrimary capitalize">{name}</span>
+                              <span className="text-textMuted">Added {stats.added} • Skipped {stats.skipped}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     )}
                 </div>
              </div>
