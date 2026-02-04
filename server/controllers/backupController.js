@@ -207,6 +207,23 @@ exports.importBackup = async (req, res) => {
 
     let added = 0;
     let skipped = 0;
+    const mergeDocLists = (current = [], incoming = []) => {
+      const existing = Array.isArray(current) ? current : [];
+      const next = [...existing];
+      const seen = new Set(existing.map(d => d && (d.id || d.url || d.name) ? `${d.id || ''}|${d.url || ''}|${d.name || ''}` : null).filter(Boolean));
+      let addedCount = 0;
+      for (const doc of (Array.isArray(incoming) ? incoming : [])) {
+        if (!doc || typeof doc !== 'object') continue;
+        const key = `${doc.id || ''}|${doc.url || ''}|${doc.name || ''}`;
+        if (key === '||') continue;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        next.push(doc);
+        addedCount += 1;
+      }
+      return { list: next, addedCount };
+    };
+
     for (const item of data) {
       if (!item || typeof item !== 'object') continue;
 
@@ -216,8 +233,28 @@ exports.importBackup = async (req, res) => {
         const exists = await model.exists({}, options);
         if (exists) { skipped += 1; continue; }
       } else if (uniqueQuery) {
-        const existsByUnique = await model.exists(uniqueQuery, options);
-        if (existsByUnique) { skipped += 1; continue; }
+        const existingDoc = await model.findOne(uniqueQuery, null, options);
+        if (existingDoc) {
+          if (collectionName === 'clients') {
+            const base = typeof existingDoc.toObject === 'function' ? existingDoc.toObject() : existingDoc;
+            const mergedInvoices = mergeDocLists(base.invoices, cleanedItem.invoices);
+            const mergedDocuments = mergeDocLists(base.documents, cleanedItem.documents);
+            const hasChanges = mergedInvoices.addedCount > 0 || mergedDocuments.addedCount > 0;
+            if (hasChanges) {
+              await model.updateOne(
+                { _id: existingDoc._id },
+                { $set: { invoices: mergedInvoices.list, documents: mergedDocuments.list } },
+                options
+              );
+              added += mergedInvoices.addedCount + mergedDocuments.addedCount;
+            } else {
+              skipped += 1;
+            }
+            continue;
+          }
+          skipped += 1;
+          continue;
+        }
       }
 
       if (cleanedItem._id) {

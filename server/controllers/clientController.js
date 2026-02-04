@@ -53,6 +53,33 @@ exports.updateClient = async (req, res) => {
 
 exports.deleteClients = async (req, res) => {
   const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.json({ message: 'Clients removed' });
+  }
+
+  const clients = await Client.find({ _id: { $in: ids } });
+
+  for (const client of clients) {
+    const allDocs = [
+      ...(client.documents || []),
+      ...(client.invoices || [])
+    ];
+
+    for (const doc of allDocs) {
+      if (doc && doc.key) {
+        await deleteFromS3(doc.key);
+      }
+      if (doc && doc.localPath) {
+        const fullPath = path.join(__dirname, '..', 'uploads', doc.localPath);
+        try {
+          await fs.unlink(fullPath);
+        } catch {
+          // ignore missing files
+        }
+      }
+    }
+  }
+
   await Client.deleteMany({ _id: { $in: ids } });
   res.json({ message: 'Clients removed' });
 };
