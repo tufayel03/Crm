@@ -4,7 +4,7 @@ import {
   Users, Briefcase, CheckSquare, 
   Video, Send, Archive,
   Download, Upload, AlertCircle, CheckCircle2, Loader2, FileArchive, RefreshCw, X, AlertTriangle,
-  CreditCard, Mail
+  CreditCard, Mail, Folder
 } from 'lucide-react';
 
 // Stores
@@ -20,6 +20,7 @@ import { exportDatabase, importDatabase, exportToJson, importFromJson, mergeArra
 
 // Component
 import DataSection from '../components/database/DataSection';
+import FileManager from '../components/database/FileManager';
 
 const DatabasePage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('mailbox');
@@ -92,6 +93,7 @@ const DatabasePage: React.FC = () => {
     { id: 'meetings', label: 'Meetings', icon: Video },
     { id: 'campaigns', label: 'Campaigns', icon: Send },
     { id: 'templates', label: 'Templates', icon: FileArchive },
+    { id: 'files', label: 'File Manager', icon: Folder },
     { id: 'backup', label: 'Backup & Restore', icon: Archive },
   ];
 
@@ -500,6 +502,10 @@ const DatabasePage: React.FC = () => {
                 icon={FileArchive}
                 itemName="Templates"
              />
+           )}
+
+           {activeTab === 'files' && (
+             <FileManager />
            )}
 
            {/* BACKUP & RESTORE TAB */}
