@@ -266,6 +266,100 @@ Open:
 
 If you see a white screen, check browser console errors and backend logs.
 
+## Oracle VPS Docker Deployment (crm.matlnace.com)
+
+This is the recommended, hands-off deploy method for Oracle VPS using Docker.
+
+### 1) DNS (subdomain)
+At your DNS provider:
+- A record: `crm` -> `YOUR_VPS_PUBLIC_IP`
+
+Wait a few minutes for DNS to propagate.
+
+### 2) Clone on the VPS
+```
+git clone <YOUR_REPO_URL> matlance
+cd matlance
+```
+
+### 3) Create production env files
+`server/.env`:
+```
+NODE_ENV=production
+PORT=5000
+MONGO_URI=mongodb://localhost:27017/matlance   # or Atlas
+JWT_SECRET=change_this_secret
+JWT_EXPIRES_IN=5d
+CORS_ORIGINS=https://crm.matlnace.com
+ADMIN_EMAIL=admin@matlance.com
+ADMIN_PASSWORD=Admin4568
+ADMIN_NAME=Admin
+APP_BASE_URL=https://crm.matlnace.com
+
+# Optional email
+# SMTP_HOST=
+# SMTP_PORT=
+# SMTP_USER=
+# SMTP_PASS=
+```
+
+`client/.env`:
+```
+VITE_API_URL=/api
+VITE_SFU_ENABLED=true
+```
+
+### 4) Start with Docker
+```
+docker compose up -d --build
+```
+
+Uploads are stored in a persistent Docker volume (`uploads_data`) and are served at:
+```
+https://crm.matlnace.com/uploads/...
+```
+
+### 5) Nginx reverse proxy (subdomain)
+Install Nginx on the VPS (if not already) and add:
+```
+server {
+  server_name crm.matlnace.com;
+
+  location /api/ {
+    proxy_pass http://127.0.0.1:5000/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_cache_bypass $http_upgrade;
+  }
+
+  location /uploads/ {
+    proxy_pass http://127.0.0.1:5000/uploads/;
+  }
+
+  location / {
+    proxy_pass http://127.0.0.1:3000/;
+  }
+}
+```
+
+Reload Nginx:
+```
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### 6) SSL (LetsEncrypt)
+```
+sudo apt install certbot python3-certbot-nginx
+sudo certbot --nginx -d crm.matlnace.com
+```
+
+### 7) Verify
+Open:
+- `https://crm.matlnace.com`
+- `https://crm.matlnace.com/api/v1/auth/me` (should return 401 without token)
+
 ## Docker (Optional)
 
 - Frontend: `client/Dockerfile`
