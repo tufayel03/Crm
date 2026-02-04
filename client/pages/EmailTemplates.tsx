@@ -4,7 +4,7 @@ import { useCampaignStore } from '../stores/campaignStore';
 import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore'; // Import Settings
 import { 
-  FileText, Plus, Save, Eye, X, Monitor, Smartphone, Image as ImageIcon
+  FileText, Plus, Save, Eye, X, Monitor, Smartphone, Image as ImageIcon, Layers, Copy, ChevronUp, ChevronDown, Trash2
 } from 'lucide-react';
 
 // Import Separated Components
@@ -18,8 +18,12 @@ import { EditorBlock, BlockType, GlobalStyle, Asset } from '../components/email-
 // Default Data
 const DEFAULT_GLOBAL_STYLE: GlobalStyle = {
   backgroundColor: '#F1F5F9',
+  backgroundGradient: undefined,
   contentWidth: 600,
+  contentFullWidth: true,
   contentBackgroundColor: '#FFFFFF',
+  contentBackgroundGradient: undefined,
+  contentBackgroundImage: undefined,
   fontFamily: 'Arial, Helvetica, sans-serif'
 };
 
@@ -29,6 +33,10 @@ const DEFAULT_BLOCKS_DATA: Record<string, any> = {
   button: { text: 'Click Me', url: '#' },
   spacer: { height: 20 },
   divider: {},
+  list: { items: ['First item', 'Second item', 'Third item'], ordered: false },
+  badge: { badgeText: 'NEW' },
+  header: { title: 'MATLANCE', subtitle: 'Business Formation & Compliance', logoUrl: '{{company_logo}}' },
+  footer: { footerText: '&copy; {{company_name}} • {{company_address}} • {{unsubscribe_link}}' },
   social: { 
     iconStyle: 'circle',
     socialLinks: [
@@ -41,8 +49,113 @@ const DEFAULT_BLOCKS_DATA: Record<string, any> = {
   div: { children: [], height: 'auto', width: '100%' }
 };
 
+const getLayerLabel = (block: EditorBlock): string => {
+  if (block.type === 'text') {
+    const raw = (block.content.text || '').replace(/<[^>]*>/g, '').trim();
+    return raw ? `Text: ${raw.slice(0, 24)}` : 'Text';
+  }
+  if (block.type === 'image') return 'Image';
+  if (block.type === 'button') return `Button: ${block.content.text || ''}`;
+  if (block.type === 'divider') return 'Divider';
+  if (block.type === 'spacer') return 'Spacer';
+  if (block.type === 'social') return 'Social';
+  if (block.type === 'html') return 'HTML';
+  if (block.type === 'badge') return `Badge: ${block.content.badgeText || ''}`;
+  if (block.type === 'list') return 'List';
+  if (block.type === 'header') return `Header: ${block.content.title || ''}`;
+  if (block.type === 'footer') return 'Footer';
+  if (block.type === 'columns') return 'Columns';
+  if (block.type === 'div') return 'Container';
+  return block.type;
+};
+
+const LayerItem: React.FC<{
+  block: EditorBlock;
+  depth: number;
+  activeBlockId: string | null;
+  onSelect: (id: string) => void;
+  onDuplicate: (id: string) => void;
+  onMoveUp: (id: string) => void;
+  onMoveDown: (id: string) => void;
+  onDelete: (id: string) => void;
+}> = ({ block, depth, activeBlockId, onSelect, onDuplicate, onMoveUp, onMoveDown, onDelete }) => {
+  const isActive = activeBlockId === block.id;
+  const label = getLayerLabel(block);
+
+  const renderChildren = () => {
+    if (block.type === 'columns' && block.content.columns) {
+      return block.content.columns.map((col, idx) => (
+        <div key={`${block.id}-col-${idx}`} className="pl-3 border-l border-border/60 ml-2">
+          <div className="text-[10px] text-textMuted uppercase mb-1">Column {idx + 1}</div>
+          {col.map(child => (
+            <LayerItem
+              key={child.id}
+              block={child}
+              depth={depth + 1}
+              activeBlockId={activeBlockId}
+              onSelect={onSelect}
+              onDuplicate={onDuplicate}
+              onMoveUp={onMoveUp}
+              onMoveDown={onMoveDown}
+              onDelete={onDelete}
+            />
+          ))}
+        </div>
+      ));
+    }
+    if (block.type === 'div' && block.content.children) {
+      return (
+        <div className="pl-3 border-l border-border/60 ml-2">
+          {block.content.children.map(child => (
+            <LayerItem
+              key={child.id}
+              block={child}
+              depth={depth + 1}
+              activeBlockId={activeBlockId}
+              onSelect={onSelect}
+              onDuplicate={onDuplicate}
+              onMoveUp={onMoveUp}
+              onMoveDown={onMoveDown}
+              onDelete={onDelete}
+            />
+          ))}
+        </div>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <div className="space-y-1">
+      <div
+        className={`flex items-center justify-between gap-2 p-2 rounded-lg border ${isActive ? 'bg-softMint border-primary' : 'bg-white border-border hover:bg-slate-50'}`}
+        style={{ marginLeft: depth * 6 }}
+      >
+        <button onClick={() => onSelect(block.id)} className="text-left text-xs font-semibold text-textPrimary truncate flex-1">
+          {label}
+        </button>
+        <div className="flex items-center gap-1">
+          <button onClick={() => onMoveUp(block.id)} className="p-1 text-textMuted hover:text-primary">
+            <ChevronUp size={12} />
+          </button>
+          <button onClick={() => onMoveDown(block.id)} className="p-1 text-textMuted hover:text-primary">
+            <ChevronDown size={12} />
+          </button>
+          <button onClick={() => onDuplicate(block.id)} className="p-1 text-textMuted hover:text-primary">
+            <Copy size={12} />
+          </button>
+          <button onClick={() => onDelete(block.id)} className="p-1 text-textMuted hover:text-danger">
+            <Trash2 size={12} />
+          </button>
+        </div>
+      </div>
+      {renderChildren()}
+    </div>
+  );
+};
+
 const EmailTemplates: React.FC = () => {
-  const { templates, addTemplate, updateTemplate } = useCampaignStore();
+  const { templates, addTemplate, updateTemplate, removeTemplate } = useCampaignStore();
   const { user } = useAuthStore();
   const { generalSettings } = useSettingsStore(); // Get settings for logo
   
@@ -52,6 +165,7 @@ const EmailTemplates: React.FC = () => {
   const [globalStyle, setGlobalStyle] = useState<GlobalStyle>(DEFAULT_GLOBAL_STYLE);
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [savedBlocks, setSavedBlocks] = useState<EditorBlock[]>([]);
   
   const [metadata, setMetadata] = useState({ name: '', subject: '' });
   const [editorMode, setEditorMode] = useState<'visual' | 'code'>('visual');
@@ -59,6 +173,13 @@ const EmailTemplates: React.FC = () => {
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isAssetManagerOpen, setIsAssetManagerOpen] = useState(false);
+  const [rightPanelTab, setRightPanelTab] = useState<'blocks' | 'layers' | 'properties'>('blocks');
+  const [leftPanelWidth, setLeftPanelWidth] = useState(260);
+  const [isResizingLeft, setIsResizingLeft] = useState(false);
+  const leftPanelRef = useRef<HTMLDivElement | null>(null);
+  const [rightPanelWidth, setRightPanelWidth] = useState(320);
+  const [isResizingRight, setIsResizingRight] = useState(false);
+  const rightPanelRef = useRef<HTMLDivElement | null>(null);
 
   // Load Template
   useEffect(() => {
@@ -97,9 +218,29 @@ const EmailTemplates: React.FC = () => {
       setActiveBlockId(null);
       setGlobalStyle(DEFAULT_GLOBAL_STYLE);
       setEditorMode('visual');
+      setRightPanelTab('blocks');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]); 
+
+  // Load Saved Blocks
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('email_builder_saved_blocks');
+      if (raw) setSavedBlocks(JSON.parse(raw));
+    } catch (e) {
+      console.error('Failed to load saved blocks', e);
+    }
+  }, []);
+
+  const persistSavedBlocks = (next: EditorBlock[]) => {
+    setSavedBlocks(next);
+    try {
+      localStorage.setItem('email_builder_saved_blocks', JSON.stringify(next));
+    } catch (e) {
+      console.error('Failed to save blocks', e);
+    }
+  };
 
   // --- Block Helper ---
   const findBlock = (id: string, list: EditorBlock[]): EditorBlock | undefined => {
@@ -120,6 +261,48 @@ const EmailTemplates: React.FC = () => {
   };
 
   const activeBlock = activeBlockId ? findBlock(activeBlockId, blocks) : undefined;
+
+  useEffect(() => {
+    if (activeBlockId) {
+      setRightPanelTab('properties');
+    } else if (rightPanelTab === 'properties') {
+      setRightPanelTab('blocks');
+    }
+  }, [activeBlockId, rightPanelTab]);
+
+  useEffect(() => {
+    if (!isResizingLeft) return;
+    const handleMove = (e: MouseEvent) => {
+      if (!leftPanelRef.current) return;
+      const rect = leftPanelRef.current.getBoundingClientRect();
+      const nextWidth = Math.max(200, Math.min(420, e.clientX - rect.left));
+      setLeftPanelWidth(nextWidth);
+    };
+    const handleUp = () => setIsResizingLeft(false);
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+  }, [isResizingLeft]);
+
+  useEffect(() => {
+    if (!isResizingRight) return;
+    const handleMove = (e: MouseEvent) => {
+      if (!rightPanelRef.current) return;
+      const rect = rightPanelRef.current.getBoundingClientRect();
+      const nextWidth = Math.max(280, Math.min(520, rect.right - e.clientX));
+      setRightPanelWidth(nextWidth);
+    };
+    const handleUp = () => setIsResizingRight(false);
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+  }, [isResizingRight]);
 
   // --- Recursive Find Parent ID of a Block ---
   const findBlockParentId = (list: EditorBlock[], targetId: string, currentParentId: string | null = null): string | null | undefined => {
@@ -170,12 +353,11 @@ const EmailTemplates: React.FC = () => {
       type,
       content: type === 'columns' ? { layout, columns: layout?.map(() => []) } : { ...DEFAULT_BLOCKS_DATA[type] },
       style: { 
-        padding: '10px 20px', 
+        padding: '0',
         backgroundColor: (type === 'columns' || type === 'div') ? 'transparent' : undefined,
-        textAlign: 'center',
+        textAlign: 'left',
         color: '#333333',
-        fontSize: 16,
-        borderRadius: 4
+        fontSize: 16
       }
     };
     
@@ -184,6 +366,97 @@ const EmailTemplates: React.FC = () => {
         newBlock.content.columns = newBlock.content.columns.map(() => []);
     }
     return newBlock;
+  };
+
+  const cloneBlock = (block: EditorBlock): EditorBlock => {
+    const newId = Math.random().toString(36).substr(2, 9);
+    if (block.type === 'columns' && block.content.columns) {
+      return {
+        ...block,
+        id: newId,
+        content: {
+          ...block.content,
+          columns: block.content.columns.map(col => col.map(child => cloneBlock(child)))
+        }
+      };
+    }
+    if (block.type === 'div' && block.content.children) {
+      return {
+        ...block,
+        id: newId,
+        content: {
+          ...block.content,
+          children: block.content.children.map(child => cloneBlock(child))
+        }
+      };
+    }
+    return { ...block, id: newId, content: { ...block.content } };
+  };
+
+  const duplicateBlock = (id: string) => {
+    let newActiveId: string | null = null;
+    const duplicateRecursive = (list: EditorBlock[]): EditorBlock[] => {
+      const next: EditorBlock[] = [];
+      list.forEach(b => {
+        if (b.id === id) {
+          const cloned = cloneBlock(b);
+          newActiveId = cloned.id;
+          next.push(b, cloned);
+          return;
+        }
+        let updated = b;
+        if (b.type === 'columns' && b.content.columns) {
+          updated = { ...b, content: { ...b.content, columns: b.content.columns.map(col => duplicateRecursive(col)) } };
+        }
+        if (b.type === 'div' && b.content.children) {
+          updated = { ...b, content: { ...b.content, children: duplicateRecursive(b.content.children) } };
+        }
+        next.push(updated);
+      });
+      return next;
+    };
+    setBlocks(duplicateRecursive(blocks));
+    if (newActiveId) setActiveBlockId(newActiveId);
+  };
+
+  const saveActiveBlockToLibrary = () => {
+    if (!activeBlock) return;
+    const cloned = cloneBlock(activeBlock);
+    persistSavedBlocks([...savedBlocks, cloned]);
+  };
+
+  const insertSavedBlock = (block: EditorBlock) => {
+    const cloned = cloneBlock(block);
+    setBlocks([...blocks, cloned]);
+    setActiveBlockId(cloned.id);
+  };
+
+  const removeSavedBlock = (id: string) => {
+    persistSavedBlocks(savedBlocks.filter(b => b.id !== id));
+  };
+
+  const moveBlock = (id: string, direction: 'up' | 'down') => {
+    const moveRecursive = (list: EditorBlock[]): EditorBlock[] => {
+      const idx = list.findIndex(b => b.id === id);
+      if (idx !== -1) {
+        const newIdx = direction === 'up' ? idx - 1 : idx + 1;
+        if (newIdx < 0 || newIdx >= list.length) return list;
+        const newList = [...list];
+        const [item] = newList.splice(idx, 1);
+        newList.splice(newIdx, 0, item);
+        return newList;
+      }
+      return list.map(b => {
+        if (b.type === 'columns' && b.content.columns) {
+          return { ...b, content: { ...b.content, columns: b.content.columns.map(col => moveRecursive(col)) } };
+        }
+        if (b.type === 'div' && b.content.children) {
+          return { ...b, content: { ...b.content, children: moveRecursive(b.content.children) } };
+        }
+        return b;
+      });
+    };
+    setBlocks(moveRecursive(blocks));
   };
 
   // --- ACTIONS ---
@@ -381,19 +654,53 @@ const EmailTemplates: React.FC = () => {
       alert("Saved!");
   };
 
+  const handleDeleteTemplate = async (id: string) => {
+    const template = templates.find(t => t.id === id);
+    if (!template) return;
+    if (!window.confirm(`Delete template "${template.name}"? This cannot be undone.`)) return;
+    await removeTemplate(id);
+    if (selectedId === id) {
+      setSelectedId(null);
+      setBlocks([]);
+      setActiveBlockId(null);
+      setGlobalStyle(DEFAULT_GLOBAL_STYLE);
+      setEditorMode('visual');
+    }
+  };
+
   return (
     <div className="flex h-[calc(100vh-64px)] -m-8 bg-appBg">
       {/* 1. Sidebar List */}
-      <div className="w-64 bg-white border-r border-border flex flex-col z-10 shrink-0">
+      <div
+        ref={leftPanelRef}
+        className="bg-white border-r border-border flex flex-col z-10 shrink-0 relative"
+        style={{ width: leftPanelWidth }}
+      >
+        <div
+          className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-primary/20"
+          onMouseDown={() => setIsResizingLeft(true)}
+          title="Drag to resize"
+        />
         <div className="p-4 border-b border-border">
           <h2 className="text-lg font-bold text-textPrimary flex items-center gap-2 mb-3"><FileText size={18} className="text-primary"/> Templates</h2>
           <button onClick={() => setSelectedId(null)} className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-darkGreen text-white font-bold rounded-lg shadow-sm hover:opacity-90 text-sm"><Plus size={16} /> New Template</button>
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {templates.map(t => (
-            <button key={t.id} onClick={() => setSelectedId(t.id)} className={`w-full text-left px-3 py-2 rounded-lg transition-all border ${selectedId === t.id ? 'bg-softMint border-primary text-darkGreen' : 'bg-white border-transparent hover:bg-slate-50'}`}>
-              <p className="font-bold text-sm truncate">{t.name}</p>
-            </button>
+            <div key={t.id} className={`w-full px-3 py-2 rounded-lg transition-all border ${selectedId === t.id ? 'bg-softMint border-primary text-darkGreen' : 'bg-white border-transparent hover:bg-slate-50'}`}>
+              <div className="flex items-center justify-between gap-2">
+                <button onClick={() => setSelectedId(t.id)} className="flex-1 text-left">
+                  <p className="font-bold text-sm truncate">{t.name}</p>
+                </button>
+                <button
+                  onClick={() => handleDeleteTemplate(t.id)}
+                  className="p-1 text-textMuted hover:text-danger"
+                  title="Delete template"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
           ))}
         </div>
       </div>
@@ -411,6 +718,19 @@ const EmailTemplates: React.FC = () => {
                     <button onClick={() => setPreviewMode('desktop')} className={`p-1.5 rounded ${previewMode==='desktop'?'bg-white shadow text-darkGreen':'text-textMuted'}`}><Monitor size={16}/></button>
                     <button onClick={() => setPreviewMode('mobile')} className={`p-1.5 rounded ${previewMode==='mobile'?'bg-white shadow text-darkGreen':'text-textMuted'}`}><Smartphone size={16}/></button>
                  </div>
+                 {selectedId && (
+                   <button
+                     onClick={() => handleDeleteTemplate(selectedId)}
+                     className="flex items-center gap-2 px-4 py-2 border border-border text-danger font-semibold rounded-lg text-sm hover:bg-red-50"
+                   >
+                     <Trash2 size={16}/> Delete Template
+                   </button>
+                 )}
+                 {activeBlock && (
+                   <button onClick={saveActiveBlockToLibrary} className="flex items-center gap-2 px-4 py-2 border border-border text-textSecondary font-semibold rounded-lg text-sm">
+                     <Copy size={16}/> Save Block
+                   </button>
+                 )}
                  <button onClick={() => setIsPreviewOpen(true)} className="flex items-center gap-2 px-4 py-2 border border-border text-textSecondary font-semibold rounded-lg text-sm"><Eye size={16}/> Preview</button>
                  <button onClick={handleSave} className="flex items-center gap-2 px-6 py-2 bg-primary text-darkGreen font-bold rounded-lg shadow-sm text-sm"><Save size={16}/> Save</button>
              </div>
@@ -424,6 +744,9 @@ const EmailTemplates: React.FC = () => {
                 activeBlockId={activeBlockId}
                 setActiveBlockId={setActiveBlockId}
                 deleteBlock={deleteBlock}
+                duplicateBlock={duplicateBlock}
+                moveBlockUp={(id) => moveBlock(id, 'up')}
+                moveBlockDown={(id) => moveBlock(id, 'down')}
                 previewMode={previewMode}
                 onDrop={handleDrop}
              />
@@ -433,26 +756,113 @@ const EmailTemplates: React.FC = () => {
       </div>
 
       {/* 3. Right Sidebar */}
-      <div className="w-80 bg-white border-l border-border flex flex-col shrink-0 z-10">
+      <div
+        ref={rightPanelRef}
+        className="bg-white border-l border-border flex flex-col shrink-0 z-10 relative"
+        style={{ width: rightPanelWidth }}
+      >
+         <div
+           className="absolute top-0 left-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-primary/20"
+           onMouseDown={() => setIsResizingRight(true)}
+           title="Drag to resize"
+         />
          <div className="flex border-b border-border">
-            <button className={`flex-1 py-3 text-sm font-bold border-b-2 ${!activeBlockId?'border-primary text-darkGreen':'border-transparent text-textSecondary'}`} onClick={() => setActiveBlockId(null)}>Blocks</button>
-            <button className={`flex-1 py-3 text-sm font-bold border-b-2 ${activeBlockId?'border-primary text-darkGreen':'border-transparent text-textSecondary'}`} disabled={!activeBlockId}>Properties</button>
+            <button
+              className={`flex-1 py-3 text-sm font-bold border-b-2 ${rightPanelTab==='blocks'?'border-primary text-darkGreen':'border-transparent text-textSecondary'}`}
+              onClick={() => { setActiveBlockId(null); setRightPanelTab('blocks'); }}
+            >
+              Blocks
+            </button>
+            <button
+              className={`flex-1 py-3 text-sm font-bold border-b-2 ${rightPanelTab==='layers'?'border-primary text-darkGreen':'border-transparent text-textSecondary'}`}
+              onClick={() => setRightPanelTab('layers')}
+            >
+              Layers
+            </button>
+            <button
+              className={`flex-1 py-3 text-sm font-bold border-b-2 ${rightPanelTab==='properties'?'border-primary text-darkGreen':'border-transparent text-textSecondary'}`}
+              onClick={() => activeBlockId && setRightPanelTab('properties')}
+              disabled={!activeBlockId}
+            >
+              Properties
+            </button>
          </div>
          <div className="flex-1 overflow-y-auto p-6">
-            {activeBlockId && activeBlock ? (
+            {rightPanelTab === 'properties' && activeBlockId && activeBlock ? (
                 <PropertiesPanel 
                     block={activeBlock} 
                     onUpdateContent={handleUpdateBlockContent} 
                     onUpdateStyle={handleUpdateBlockStyle} 
                     onClose={() => setActiveBlockId(null)} 
+                    onDuplicate={duplicateBlock}
+                    onMoveUp={(id) => moveBlock(id, 'up')}
+                    onMoveDown={(id) => moveBlock(id, 'down')}
+                    onDelete={deleteBlock}
                 />
+            ) : rightPanelTab === 'layers' ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-xs text-textSecondary">
+                    <Layers size={14} /> Layer Tree
+                  </div>
+                  <div className="space-y-2">
+                    {blocks.length === 0 && (
+                      <div className="text-xs text-textMuted">No blocks yet.</div>
+                    )}
+                    {blocks.map((b) => (
+                      <LayerItem
+                        key={b.id}
+                        block={b}
+                        depth={0}
+                        activeBlockId={activeBlockId}
+                        onSelect={setActiveBlockId}
+                        onDuplicate={duplicateBlock}
+                        onMoveUp={(id) => moveBlock(id, 'up')}
+                        onMoveDown={(id) => moveBlock(id, 'down')}
+                        onDelete={deleteBlock}
+                      />
+                    ))}
+                  </div>
+                </div>
             ) : (
-                <Toolbox 
-                    onAddBlock={handleAddBlock} 
-                    globalStyle={globalStyle} 
-                    setGlobalStyle={setGlobalStyle} 
-                    onOpenAssetManager={() => setIsAssetManagerOpen(true)}
-                />
+                <div className="space-y-6">
+                  <Toolbox 
+                      onAddBlock={handleAddBlock} 
+                      globalStyle={globalStyle} 
+                      setGlobalStyle={setGlobalStyle} 
+                      onOpenAssetManager={() => setIsAssetManagerOpen(true)}
+                  />
+                  <div className="pt-4 border-t border-border space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-textSecondary uppercase">Saved Blocks</h4>
+                      <button
+                        onClick={saveActiveBlockToLibrary}
+                        disabled={!activeBlock}
+                        className="text-xs font-bold text-primary disabled:opacity-50"
+                      >
+                        Save Selected
+                      </button>
+                    </div>
+                    {savedBlocks.length === 0 ? (
+                      <div className="text-xs text-textMuted">No saved blocks.</div>
+                    ) : (
+                      <div className="space-y-2">
+                        {savedBlocks.map(block => (
+                          <div key={block.id} className="flex items-center justify-between gap-2 p-2 border border-border rounded-lg bg-white">
+                            <span className="text-xs font-semibold text-textPrimary truncate">{getLayerLabel(block)}</span>
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => insertSavedBlock(block)} className="px-2 py-1 text-xs font-bold text-darkGreen bg-softMint rounded">
+                                Insert
+                              </button>
+                              <button onClick={() => removeSavedBlock(block.id)} className="px-2 py-1 text-xs font-bold text-danger bg-red-50 rounded">
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
             )}
          </div>
       </div>

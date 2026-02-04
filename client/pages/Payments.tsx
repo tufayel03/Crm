@@ -54,6 +54,7 @@ const Payments: React.FC = () => {
 
   // Sending Email State
   const [sendingEmailId, setSendingEmailId] = useState<string | null>(null);
+  const [isBulkEmailing, setIsBulkEmailing] = useState(false);
 
   // Create Invoice State
   const [newInvoice, setNewInvoice] = useState<{
@@ -318,6 +319,69 @@ const Payments: React.FC = () => {
       generateInvoicePDF(payment, client, generalSettings);
   };
 
+  const sendInvoiceWithPdf = async (payment: Payment, client: Client) => {
+      // Use visual template from Campaign Store
+      let template = templates.find(t => t.name === "Invoice Notification");
+      
+      // Fallback if deleted
+      if (!template) {
+          console.warn("Invoice Notification template not found. Using simple fallback.");
+          template = {
+              id: 'fallback',
+              name: 'Fallback',
+              subject: `Invoice ${getInvoiceDisplayId(payment.invoiceId, payment.id)}`,
+              htmlContent: `<p>Please pay your invoice of $${payment.amount}.</p>`,
+              createdBy: 'System'
+          };
+      }
+
+      const formattedAmount = `${payment.amount.toLocaleString()} ${generalSettings.currency}`;
+      const dueDate = payment.dueDate ? new Date(payment.dueDate).toLocaleDateString() : 'Immediate';
+
+      // If Visual Builder used, re-compile to ensure latest state
+      let htmlBody = template.htmlContent;
+      if (template.designJson) {
+          try {
+              const design = JSON.parse(template.designJson);
+              htmlBody = compileHtml(design.blocks, design.globalStyle, [], generalSettings.logoUrl);
+          } catch (e) {
+              console.error("Error compiling invoice template", e);
+          }
+      }
+
+      const baseTokens = buildCompanyTokens(generalSettings);
+      const tokenData = {
+          ...baseTokens,
+          client_name: client.contactName || '',
+          invoice_id: getInvoiceDisplayId(payment.invoiceId, payment.id),
+          amount: formattedAmount,
+          due_date: dueDate,
+          service: payment.serviceType || '',
+          invoice_link: '#'
+      };
+
+      const subject = applyTemplateTokens(template.subject, tokenData);
+      const body = applyTemplateTokens(htmlBody, tokenData);
+
+      // Generate PDF Blob
+      const pdfBlob = getInvoicePDFBlob(payment, client, generalSettings);
+      const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve((reader.result as string).split(',')[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(pdfBlob);
+      });
+
+      await sendInvoiceEmail(payment.id, {
+          to: client.email,
+          subject,
+          html: body,
+          attachmentBase64: base64,
+          attachmentName: `Invoice_${getInvoiceDisplayId(payment.invoiceId, payment.id)}.pdf`,
+          attachmentType: 'application/pdf'
+      });
+  };
+
   const handleEmailInvoice = async (payment: Payment) => {
       const client = clients.find(c => c.id === payment.clientId);
       if (!client || !client.email) {
@@ -330,67 +394,7 @@ const Payments: React.FC = () => {
       setSendingEmailId(payment.id);
 
       try {
-        // Use visual template from Campaign Store
-        let template = templates.find(t => t.name === "Invoice Notification");
-        
-        // Fallback if deleted
-        if (!template) {
-            console.warn("Invoice Notification template not found. Using simple fallback.");
-            template = {
-                id: 'fallback',
-                name: 'Fallback',
-                subject: `Invoice ${getInvoiceDisplayId(payment.invoiceId, payment.id)}`,
-                htmlContent: `<p>Please pay your invoice of $${payment.amount}.</p>`,
-                createdBy: 'System'
-            };
-        }
-
-        const formattedAmount = `${payment.amount.toLocaleString()} ${generalSettings.currency}`;
-        const dueDate = payment.dueDate ? new Date(payment.dueDate).toLocaleDateString() : 'Immediate';
-
-        // If Visual Builder used, re-compile to ensure latest state (or use cached htmlContent if preferred)
-        let htmlBody = template.htmlContent;
-        if (template.designJson) {
-            try {
-                const design = JSON.parse(template.designJson);
-                // Pass logoUrl to compiler
-                htmlBody = compileHtml(design.blocks, design.globalStyle, [], generalSettings.logoUrl);
-            } catch (e) {
-                console.error("Error compiling invoice template", e);
-            }
-        }
-
-        const baseTokens = buildCompanyTokens(generalSettings);
-        const tokenData = {
-            ...baseTokens,
-            client_name: client.contactName || '',
-            invoice_id: getInvoiceDisplayId(payment.invoiceId, payment.id),
-            amount: formattedAmount,
-            due_date: dueDate,
-            service: payment.serviceType || '',
-            invoice_link: '#'
-        };
-
-        const subject = applyTemplateTokens(template.subject, tokenData);
-        const body = applyTemplateTokens(htmlBody, tokenData);
-
-        // Generate PDF Blob
-        const pdfBlob = getInvoicePDFBlob(payment, client, generalSettings);
-        const base64 = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve((reader.result as string).split(',')[1]);
-            reader.onerror = reject;
-            reader.readAsDataURL(pdfBlob);
-        });
-
-        await sendInvoiceEmail(payment.id, {
-            to: client.email,
-            subject,
-            html: body,
-            attachmentBase64: base64,
-            attachmentName: `Invoice_${getInvoiceDisplayId(payment.invoiceId, payment.id)}.pdf`,
-            attachmentType: 'application/pdf'
-        });
+        await sendInvoiceWithPdf(payment, client);
         addNotification('success', `Invoice and PDF sent to ${client.email}`);
       } catch (err) {
         console.error("Failed to send email", err);
@@ -398,6 +402,36 @@ const Payments: React.FC = () => {
       } finally {
         setSendingEmailId(null);
       }
+  };
+
+  const handleBulkEmailInvoices = async () => {
+      if (selectedIds.length === 0) return;
+      if (!window.confirm(`Send ${selectedIds.length} invoice emails with PDFs?`)) return;
+
+      const paymentsToSend = payments.filter(p => selectedIds.includes(p.id));
+      setIsBulkEmailing(true);
+
+      let sent = 0;
+      let skipped = 0;
+      let failed = 0;
+
+      for (const payment of paymentsToSend) {
+          const client = clients.find(c => c.id === payment.clientId);
+          if (!client || !client.email) {
+              skipped += 1;
+              continue;
+          }
+          try {
+              await sendInvoiceWithPdf(payment, client);
+              sent += 1;
+          } catch (err) {
+              console.error('Bulk email failed', err);
+              failed += 1;
+          }
+      }
+
+      setIsBulkEmailing(false);
+      addNotification('success', `Bulk email complete. Sent: ${sent}, Skipped: ${skipped}, Failed: ${failed}.`);
   };
 
   return (
@@ -687,6 +721,8 @@ const Payments: React.FC = () => {
            onExportZip={handleBulkDownload}
            onDelete={initiateBulkDelete}
            isExporting={isExporting}
+           onEmailBulk={handleBulkEmailInvoices}
+           isEmailingBulk={isBulkEmailing}
            exportProgress={exportProgress}
            exportStatus={exportStatus}
         />

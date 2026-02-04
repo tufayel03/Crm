@@ -18,8 +18,6 @@ import {
   ArrowLeft, 
   Mail, 
   Phone, 
-  MoreHorizontal, 
-  Globe, 
   Clock, 
   DollarSign,
   FileText,
@@ -29,16 +27,16 @@ import {
   Calendar,
   Send,
   CheckCircle2,
-  AlertCircle,
   Download,
   FileSpreadsheet,
   Archive,
   Loader2,
   User,
   Edit2,
-  Check,
   Copy,
-  Trash2
+  Trash2,
+  Hash,
+  MapPin
 } from 'lucide-react';
 
 const ClientDetail: React.FC = () => {
@@ -48,7 +46,7 @@ const ClientDetail: React.FC = () => {
     clients, payments, updateClient,
     removeClientDocument, uploadClientDocument,
     addClientService, updateSubscription, removeClientService, addClientNote, 
-    addPayment, updatePaymentStatus
+    addPayment, updatePaymentStatus, updatePayment, deletePayment
   } = useClientsStore();
   const { plans } = useServicesStore();
   const { members } = useTeamStore();
@@ -64,9 +62,7 @@ const ClientDetail: React.FC = () => {
   const [newNote, setNewNote] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   
-  // Agent Editing State
-  const [isEditingAgent, setIsEditingAgent] = useState(false);
-  const [selectedAgentId, setSelectedAgentId] = useState('');
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   
   // Email Modal State
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
@@ -78,7 +74,8 @@ const ClientDetail: React.FC = () => {
   const [newPayment, setNewPayment] = useState({
     amount: 0,
     serviceType: '',
-    dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    status: 'Due' as Payment['status']
   });
 
   const client = clients.find(c => c.id === id);
@@ -101,6 +98,9 @@ const ClientDetail: React.FC = () => {
     return <div className="p-8 text-center">Client not found</div>;
   }
 
+  const displayName = client.companyName || client.contactName || 'Client';
+  const displayContact = client.contactName || client.companyName || 'Client';
+
   // Simplified calculation assuming monthly renewals for LTV estimation for now
   const lifetimeValue = client.services.reduce((acc, s) => acc + (s.price * 12), 0) + paidPayments.reduce((acc, p) => acc + p.amount, 0); 
 
@@ -121,19 +121,22 @@ const ClientDetail: React.FC = () => {
   // --- Handlers ---
 
   const handleCopyInfo = () => {
-      const text = `${client.companyName}\nContact: ${client.contactName}\nEmail: ${client.email}\nPhone: ${client.phone}`;
+      const text = `${displayName}\nContact: ${displayContact}\nEmail: ${client.email || ''}\nPhone: ${client.phone || ''}`;
       navigator.clipboard.writeText(text);
-      alert("Client info copied to clipboard!");
   };
 
-  const handleSaveAgent = () => {
-      const agent = availableAgents.find(a => a.id === selectedAgentId);
+  const handleAccountManagerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const agentId = e.target.value;
+      if (!agentId) {
+        updateClient(client.id, { accountManagerId: '', accountManagerName: 'Unassigned' });
+        return;
+      }
+      const agent = availableAgents.find(a => a.id === agentId);
       if (agent) {
           updateClient(client.id, {
               accountManagerId: agent.id,
               accountManagerName: agent.name
           });
-          setIsEditingAgent(false);
       }
   };
 
@@ -177,29 +180,54 @@ const ClientDetail: React.FC = () => {
       }
   };
 
-  const handleCreatePayment = (e: React.FormEvent) => {
+  const handleCreatePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPayment.amount <= 0 || !newPayment.serviceType) return;
-
-    const payment: Payment = {
-        id: `temp-${Math.random().toString(36).slice(2, 10)}`,
-        invoiceId: generateInvoiceId(payments.map(item => item.invoiceId || item.id)),
-        clientId: client.id,
-        clientName: client.companyName,
-        amount: newPayment.amount,
-        serviceType: newPayment.serviceType,
-        status: 'Due',
-        date: new Date().toISOString(),
-        dueDate: new Date(newPayment.dueDate).toISOString()
-    };
-
-    addPayment(payment);
+    if (editingPayment) {
+        await updatePayment(editingPayment.id, {
+            amount: newPayment.amount,
+            serviceType: newPayment.serviceType,
+            dueDate: new Date(newPayment.dueDate).toISOString(),
+            status: newPayment.status
+        });
+        setEditingPayment(null);
+    } else {
+        const payment: Payment = {
+            id: `temp-${Math.random().toString(36).slice(2, 10)}`,
+            invoiceId: generateInvoiceId(payments.map(item => item.invoiceId || item.id)),
+            clientId: client.id,
+            clientName: displayName,
+            amount: newPayment.amount,
+            serviceType: newPayment.serviceType,
+            status: newPayment.status,
+            date: new Date().toISOString(),
+            dueDate: new Date(newPayment.dueDate).toISOString()
+        };
+        addPayment(payment);
+    }
     setIsPaymentModalOpen(false);
     setNewPayment({
         amount: 0,
         serviceType: '',
-        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        status: 'Due'
     });
+  };
+
+  const handleEditPayment = (payment: Payment) => {
+      setEditingPayment(payment);
+      setNewPayment({
+          amount: payment.amount,
+          serviceType: payment.serviceType,
+          dueDate: new Date(payment.dueDate || payment.date).toISOString().split('T')[0],
+          status: payment.status
+      });
+      setIsPaymentModalOpen(true);
+  };
+
+  const handleDeletePayment = async (paymentId: string) => {
+      if (!window.confirm('Delete this payment/invoice?')) return;
+      await deletePayment(paymentId);
   };
 
   const handleDownloadInvoice = (payment: Payment) => {
@@ -304,27 +332,33 @@ const ClientDetail: React.FC = () => {
             <ArrowLeft size={18} /> Back to Clients
         </button>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+            <span className="px-3 py-2 bg-slate-100 rounded-lg text-sm font-mono text-textMuted flex items-center gap-1" title="Unique ID">
+                <Hash size={14} /> {client.uniqueId || '---'}
+            </span>
+            <span className="px-3 py-2 bg-slate-100 rounded-lg text-sm font-mono text-textMuted flex items-center gap-1" title="System ID">
+                <Hash size={14} /> {client.readableId}
+            </span>
             <button 
-               onClick={handleCopyInfo}
-               className="flex items-center gap-2 px-3 py-2 bg-white border border-border rounded-lg text-sm font-bold text-textSecondary hover:bg-slate-50 transition-colors"
-               title="Copy Name, Email, Phone"
+              onClick={handleCopyInfo}
+              className="flex items-center gap-2 px-3 py-2 bg-white border border-border rounded-lg text-sm font-bold text-textSecondary hover:bg-slate-50 transition-colors"
+              title="Copy Name, Email, Phone"
             >
-               <Copy size={16} /> Copy Info
+              <Copy size={16} /> Copy Info
             </button>
             <button 
-               onClick={() => downloadClientExcel(client)}
-               className="flex items-center gap-2 px-3 py-2 bg-white border border-border rounded-lg text-sm font-bold text-textSecondary hover:bg-slate-50 transition-colors"
+              onClick={() => downloadClientExcel(client)}
+              className="flex items-center gap-2 px-3 py-2 bg-white border border-border rounded-lg text-sm font-bold text-textSecondary hover:bg-slate-50 transition-colors"
             >
-               <FileSpreadsheet size={16} className="text-green-600" /> Export Excel
+              <FileSpreadsheet size={16} className="text-green-600" /> Export Excel
             </button>
             <button 
-               onClick={handleExportZip}
-               disabled={isExporting}
-               className="flex items-center gap-2 px-3 py-2 bg-white border border-border rounded-lg text-sm font-bold text-textSecondary hover:bg-slate-50 transition-colors disabled:opacity-50"
+              onClick={handleExportZip}
+              disabled={isExporting}
+              className="flex items-center gap-2 px-3 py-2 bg-white border border-border rounded-lg text-sm font-bold text-textSecondary hover:bg-slate-50 transition-colors disabled:opacity-50"
             >
-               {isExporting ? <Loader2 size={16} className="animate-spin text-primary"/> : <Archive size={16} className="text-orange-500" />} 
-               Export Full Package (ZIP)
+              {isExporting ? <Loader2 size={16} className="animate-spin text-primary"/> : <Archive size={16} className="text-orange-500" />} 
+              Export Full Package (ZIP)
             </button>
         </div>
       </div>
@@ -332,82 +366,75 @@ const ClientDetail: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* LEFT COLUMN - Main Info & Services */}
         <div className="lg:col-span-2 space-y-6">
-            {/* Main Client Card */}
-            <div className="bg-white rounded-3xl border border-border overflow-hidden shadow-sm">
-                {/* Header Section */}
-                <div className="p-6 border-b border-border flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-white">
-                <div className="flex gap-4">
-                    <div className="w-16 h-16 rounded-2xl bg-darkGreen flex items-center justify-center text-white font-bold text-3xl shadow-lg shadow-darkGreen/20">
-                    {client.companyName.charAt(0)}
+            {/* Profile Card (Lead-style) */}
+            <div className="bg-white p-6 rounded-2xl border border-border">
+                <div className="flex flex-col items-center text-center mb-6">
+                    <div className="w-24 h-24 rounded-full bg-softMint flex items-center justify-center text-darkGreen text-4xl font-bold mb-4 shadow-inner">
+                        {displayName.charAt(0)}
                     </div>
-                    <div>
-                    <h2 className="text-2xl font-bold text-textPrimary">{client.companyName}</h2>
-                    <div className="flex flex-wrap items-center gap-y-1 gap-x-4 mt-2">
-                        <span className="text-sm text-textSecondary flex items-center gap-1">
-                        <Globe size={16} className="text-textMuted" /> {client.country}
-                        </span>
-                        <span className="text-sm text-textSecondary flex items-center gap-1">
-                        <Clock size={16} className="text-textMuted" /> Onboarded {new Date(client.onboardedAt).toLocaleDateString()}
-                        </span>
-                        
-                        {/* Account Manager Section with Edit Capability */}
-                        {isEditingAgent && isAdminOrManager ? (
-                            <div className="flex items-center gap-1">
-                                <select 
-                                    className="text-xs border border-border rounded p-1 max-w-[150px] bg-white"
-                                    value={selectedAgentId}
-                                    onChange={(e) => setSelectedAgentId(e.target.value)}
-                                >
-                                    <option value="">Select Agent...</option>
-                                    {availableAgents.map(agent => (
-                                        <option key={agent.id} value={agent.id}>{agent.name}</option>
-                                    ))}
-                                </select>
-                                <button onClick={handleSaveAgent} disabled={!selectedAgentId} className="p-1 text-success hover:bg-green-50 rounded"><Check size={14}/></button>
-                                <button onClick={() => setIsEditingAgent(false)} className="p-1 text-danger hover:bg-red-50 rounded"><X size={14}/></button>
-                            </div>
+                    <h2 className="text-2xl font-bold text-textPrimary">{displayName}</h2>
+                    {client.companyName && client.contactName && (
+                        <span className="text-sm text-textSecondary mt-1">{displayContact}</span>
+                    )}
+                    <span className="mt-2 text-xs font-bold text-primary flex items-center gap-1">
+                        <CheckCircle2 size={14} /> Active Client
+                    </span>
+                </div>
+
+                <div className="space-y-4">
+                    <div className="flex items-center gap-3 text-textSecondary">
+                        <Mail size={18} className="text-textMuted" />
+                        <span className="text-sm">{client.email || 'No email'}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-textSecondary">
+                        <Phone size={18} className="text-textMuted" />
+                        <span className="text-sm">{client.phone || 'No phone'}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-textSecondary">
+                        <MapPin size={18} className="text-textMuted" />
+                        <span className="text-sm">{client.country || '—'}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-textSecondary">
+                        <Calendar size={18} className="text-textMuted" />
+                        <span className="text-sm">Onboarded {new Date(client.onboardedAt).toLocaleDateString()}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-textSecondary">
+                        <Hash size={18} className="text-textMuted" />
+                        <span className="text-sm">Unique ID:</span>
+                        <span className="text-sm font-mono text-textSecondary ml-auto">{client.uniqueId || '—'}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-textSecondary">
+                        <User size={18} className="text-textMuted" />
+                        <span className="text-sm">Assigned to:</span>
+                        {isAdminOrManager ? (
+                            <select 
+                                className="ml-auto text-sm bg-slate-50 border border-border rounded px-2 py-1 outline-none focus:border-primary"
+                                value={client.accountManagerId || ''}
+                                onChange={handleAccountManagerChange}
+                            >
+                                <option value="">Unassigned</option>
+                                {availableAgents.map(agent => (
+                                    <option key={agent.id} value={agent.id}>{agent.name}</option>
+                                ))}
+                            </select>
                         ) : (
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs text-darkGreen font-bold px-3 py-1 bg-softMint rounded-full flex items-center gap-1">
-                                    <User size={12} /> AM: {client.accountManagerName}
-                                </span>
-                                {isAdminOrManager && (
-                                    <button 
-                                        onClick={() => { setSelectedAgentId(client.accountManagerId); setIsEditingAgent(true); }}
-                                        className="text-textMuted hover:text-primary transition-colors p-1 rounded hover:bg-slate-100"
-                                        title="Change Account Manager"
-                                    >
-                                        <Edit2 size={12} />
-                                    </button>
-                                )}
-                            </div>
+                            <span className="ml-auto text-sm text-textSecondary">{client.accountManagerName || 'Unassigned'}</span>
                         )}
                     </div>
-                    </div>
                 </div>
-                
-                <div className="flex items-center gap-4">
-                    <div className="text-right hidden sm:block">
-                    <p className="text-xs text-textMuted font-bold uppercase tracking-widest">Contact</p>
-                    <p className="text-lg font-semibold text-textPrimary">{client.contactName}</p>
-                    </div>
-                    <div className="flex gap-2">
+
+                <div className="mt-8 space-y-3">
                     <button 
                         onClick={() => setIsEmailModalOpen(true)}
-                        className="p-3 bg-white border border-border rounded-xl text-textSecondary hover:text-primary transition-colors" 
-                        title="Send Email"
+                        className="w-full py-3 border border-border text-textPrimary font-semibold rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
                     >
-                        <Mail size={20} />
+                        <Mail size={18} /> Send Email
                     </button>
-                    <button className="p-3 bg-white border border-border rounded-xl text-textSecondary hover:text-primary transition-colors" title="Call">
-                        <Phone size={20} />
-                    </button>
-                    <button className="p-3 bg-white border border-border rounded-xl text-textSecondary hover:text-danger transition-colors">
-                        <MoreHorizontal size={20} />
-                    </button>
-                    </div>
                 </div>
-                </div>
+            </div>
+
+            {/* Services Card */}
+            <div className="bg-white rounded-3xl border border-border overflow-hidden shadow-sm">
 
                 {/* Services Section */}
                 <div className="p-8">
@@ -516,7 +543,16 @@ const ClientDetail: React.FC = () => {
                     </h3>
                     <div className="flex gap-2">
                         <button 
-                            onClick={() => setIsPaymentModalOpen(true)}
+                            onClick={() => {
+                                setEditingPayment(null);
+                                setNewPayment({
+                                  amount: 0,
+                                  serviceType: '',
+                                  dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                                  status: 'Due'
+                                });
+                                setIsPaymentModalOpen(true);
+                            }}
                             className="flex items-center gap-2 text-sm font-bold text-darkGreen hover:bg-softMint px-3 py-2 rounded-lg transition-colors"
                         >
                             <Plus size={16} /> Create Invoice
@@ -549,18 +585,32 @@ const ClientDetail: React.FC = () => {
                                             >
                                                 <Download size={14} />
                                             </button>
-                                            <button 
-                                                onClick={() => handleSendReminder(p)}
-                                                className="p-1.5 bg-white border border-border text-textSecondary hover:text-primary rounded-lg transition-colors"
-                                                title="Send Reminder"
-                                            >
-                                                <Mail size={14} />
-                                            </button>
-                                            <button 
-                                                onClick={() => updatePaymentStatus(p.id, 'Paid')}
-                                                className="px-3 py-1.5 bg-success text-white text-xs font-bold rounded-lg hover:bg-success/90 transition-colors ml-1"
-                                            >
-                                                Mark Paid
+                            <button 
+                                onClick={() => handleSendReminder(p)}
+                                className="p-1.5 bg-white border border-border text-textSecondary hover:text-primary rounded-lg transition-colors"
+                                title="Send Reminder"
+                            >
+                                <Mail size={14} />
+                            </button>
+                            <button 
+                                onClick={() => handleEditPayment(p)}
+                                className="p-1.5 bg-white border border-border text-textSecondary hover:text-primary rounded-lg transition-colors"
+                                title="Edit Invoice"
+                            >
+                                <Edit2 size={14} />
+                            </button>
+                            <button 
+                                onClick={() => handleDeletePayment(p.id)}
+                                className="p-1.5 bg-white border border-border text-textSecondary hover:text-danger rounded-lg transition-colors"
+                                title="Delete Invoice"
+                            >
+                                <Trash2 size={14} />
+                            </button>
+                            <button 
+                                onClick={() => updatePaymentStatus(p.id, 'Paid')}
+                                className="px-3 py-1.5 bg-success text-white text-xs font-bold rounded-lg hover:bg-success/90 transition-colors ml-1"
+                            >
+                                Mark Paid
                                             </button>
                                         </div>
                                     </div>
@@ -595,6 +645,20 @@ const ClientDetail: React.FC = () => {
                                                 title="Download PDF"
                                             >
                                                 <Download size={14} />
+                                            </button>
+                                            <button 
+                                                onClick={() => handleEditPayment(p)}
+                                                className="p-1 text-textMuted hover:text-primary transition-colors"
+                                                title="Edit Invoice"
+                                            >
+                                                <Edit2 size={14} />
+                                            </button>
+                                            <button 
+                                                onClick={() => handleDeletePayment(p.id)}
+                                                className="p-1 text-textMuted hover:text-danger transition-colors"
+                                                title="Delete Invoice"
+                                            >
+                                                <Trash2 size={14} />
                                             </button>
                                         </div>
                                     </div>
@@ -725,8 +789,16 @@ const ClientDetail: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-bold text-textPrimary">Create Invoice / Payment Request</h3>
-              <button onClick={() => setIsPaymentModalOpen(false)} className="text-textMuted hover:text-danger">
+              <h3 className="text-lg font-bold text-textPrimary">
+                {editingPayment ? 'Edit Invoice / Payment' : 'Create Invoice / Payment Request'}
+              </h3>
+              <button 
+                onClick={() => {
+                  setIsPaymentModalOpen(false);
+                  setEditingPayment(null);
+                }}
+                className="text-textMuted hover:text-danger"
+              >
                 <X size={20} />
               </button>
             </div>
@@ -767,11 +839,24 @@ const ClientDetail: React.FC = () => {
                 </div>
               </div>
 
+              <div>
+                <label className="block text-xs font-bold text-textSecondary uppercase mb-1">Status</label>
+                <select
+                  value={newPayment.status}
+                  onChange={(e) => setNewPayment({ ...newPayment, status: e.target.value as Payment['status'] })}
+                  className="w-full px-3 py-2 bg-appBg border border-border rounded-lg focus:ring-2 focus:ring-primary outline-none"
+                >
+                  <option value="Due">Due</option>
+                  <option value="Overdue">Overdue</option>
+                  <option value="Paid">Paid</option>
+                </select>
+              </div>
+
               <button 
                 type="submit" 
                 className="w-full py-3 mt-4 bg-darkGreen text-white font-bold rounded-xl hover:bg-opacity-90 transition-all"
               >
-                Create Payment Request
+                {editingPayment ? 'Update Invoice' : 'Create Payment Request'}
               </button>
             </form>
           </div>

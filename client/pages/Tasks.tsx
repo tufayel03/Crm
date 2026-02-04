@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 
 const Tasks: React.FC = () => {
-  const { tasks, createTask, completeTask, deleteTask, fetchTasks } = useTasksStore();
+  const { tasks, createTask, completeTask, deleteTask, deleteCompletedTasks, fetchTasks } = useTasksStore();
   const { user } = useAuthStore();
   const { members, fetchMembers } = useTeamStore();
   const { addNotification } = useNotificationStore();
@@ -64,6 +64,23 @@ const Tasks: React.FC = () => {
       return matchesSearch && matchesStatus;
     }).sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
   }, [tasks, search, filterStatus, user?.id]);
+
+  const visibleCompletedIds = useMemo(() => {
+    return tasks
+      .filter(t => (t.assignedTo === user?.id || t.createdBy === user?.id) && t.status === 'completed')
+      .map(t => t.id);
+  }, [tasks, user?.id]);
+
+  const handleDeleteCompleted = async () => {
+    if (visibleCompletedIds.length === 0) return;
+    if (!window.confirm(`Delete ${visibleCompletedIds.length} completed task(s)? This cannot be undone.`)) return;
+    const deletedIds = await deleteCompletedTasks();
+    if (deletedIds.length > 0) {
+      addNotification('success', `Deleted ${deletedIds.length} completed task(s).`);
+    } else {
+      addNotification('info', 'No completed tasks to delete.');
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,7 +166,7 @@ const Tasks: React.FC = () => {
             className="w-full pl-10 pr-4 py-2 bg-appBg border border-border rounded-xl focus:ring-2 focus:ring-primary outline-none"
           />
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {['all', 'pending', 'completed'].map(status => (
             <button
               key={status}
@@ -163,6 +180,14 @@ const Tasks: React.FC = () => {
               {status}
             </button>
           ))}
+          <button
+            onClick={handleDeleteCompleted}
+            disabled={visibleCompletedIds.length === 0}
+            className="px-4 py-2 rounded-xl text-sm font-bold border transition-colors bg-white text-danger border-border hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Delete all completed tasks"
+          >
+            Delete Completed
+          </button>
         </div>
       </div>
 

@@ -12,6 +12,10 @@ interface PropertiesPanelProps {
   onUpdateContent: (id: string, content: any) => void;
   onUpdateStyle: (id: string, style: any) => void;
   onClose: () => void;
+  onDuplicate: (id: string) => void;
+  onMoveUp: (id: string) => void;
+  onMoveDown: (id: string) => void;
+  onDelete: (id: string) => void;
 }
 
 const VARIABLES = [
@@ -57,7 +61,7 @@ const SOCIAL_NETWORKS = [
   { value: 'email', label: 'Email' }
 ];
 
-const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ block, onUpdateContent, onUpdateStyle, onClose }) => {
+const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ block, onUpdateContent, onUpdateStyle, onClose, onDuplicate, onMoveUp, onMoveDown, onDelete }) => {
   const [dragActive, setDragActive] = useState(false);
   
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, isBg: boolean = false) => {
@@ -124,7 +128,21 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ block, onUpdateConten
   return (
     <div className="space-y-6">
        <div className="flex justify-between items-center mb-2 pb-4 border-b border-border">
-          <h3 className="text-sm font-bold text-textPrimary capitalize">Edit {block.type}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-bold text-textPrimary capitalize">Edit {block.type}</h3>
+            <button onClick={() => onDuplicate(block.id)} className="text-xs font-bold text-textSecondary px-2 py-1 border border-border rounded hover:bg-slate-50">
+              Duplicate
+            </button>
+            <button onClick={() => onMoveUp(block.id)} className="text-xs font-bold text-textSecondary px-2 py-1 border border-border rounded hover:bg-slate-50">
+              Up
+            </button>
+            <button onClick={() => onMoveDown(block.id)} className="text-xs font-bold text-textSecondary px-2 py-1 border border-border rounded hover:bg-slate-50">
+              Down
+            </button>
+            <button onClick={() => onDelete(block.id)} className="text-xs font-bold text-danger px-2 py-1 border border-border rounded hover:bg-red-50">
+              Delete
+            </button>
+          </div>
           <button onClick={onClose} className="text-xs text-primary font-bold">Done</button>
        </div>
 
@@ -143,6 +161,51 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ block, onUpdateConten
                       <input type="text" value={block.style.height || ''} onChange={(e) => onUpdateStyle(block.id, { height: e.target.value })} className="w-full p-2 border rounded text-sm bg-white text-black" placeholder="auto" />
                    </div>
                 </div>
+             </div>
+
+             <div>
+               <label className="block text-xs font-bold text-textSecondary mb-1">Padding</label>
+               <input
+                 type="text"
+                 value={block.style.padding || ''}
+                 onChange={(e) => onUpdateStyle(block.id, { padding: e.target.value })}
+                 className="w-full p-2 border rounded text-sm bg-white text-black"
+                 placeholder="e.g. 20px or 16px 24px"
+               />
+             </div>
+
+             <div className="grid grid-cols-2 gap-2">
+               <div>
+                 <label className="block text-[10px] text-textMuted uppercase mb-1">Border Radius</label>
+                 <input
+                   type="number"
+                   value={block.style.borderRadius ?? ''}
+                   onChange={(e) => onUpdateStyle(block.id, { borderRadius: parseInt(e.target.value) || 0 })}
+                   className="w-full p-2 border rounded text-sm bg-white text-black"
+                   placeholder="0"
+                 />
+               </div>
+               <div>
+                 <label className="block text-[10px] text-textMuted uppercase mb-1">Border</label>
+                 <input
+                   type="text"
+                   value={block.style.border || ''}
+                   onChange={(e) => onUpdateStyle(block.id, { border: e.target.value })}
+                   className="w-full p-2 border rounded text-sm bg-white text-black"
+                   placeholder="1px solid #e5e7eb"
+                 />
+               </div>
+             </div>
+
+             <div>
+               <label className="block text-xs font-bold text-textSecondary mb-1">Shadow</label>
+               <input
+                 type="text"
+                 value={block.style.boxShadow || ''}
+                 onChange={(e) => onUpdateStyle(block.id, { boxShadow: e.target.value })}
+                 className="w-full p-2 border rounded text-sm bg-white text-black"
+                 placeholder="0 8px 24px rgba(0,0,0,0.12)"
+               />
              </div>
              
              <ColorPicker 
@@ -174,12 +237,192 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ block, onUpdateConten
                   placeholder="Image URL..." 
                 />
              </div>
+
+             <div className="grid grid-cols-3 gap-2">
+               <div>
+                 <label className="block text-[10px] text-textMuted uppercase mb-1">Size</label>
+                 <select
+                   value={block.style.backgroundSize || 'cover'}
+                   onChange={(e) => onUpdateStyle(block.id, { backgroundSize: e.target.value })}
+                   className="w-full p-2 border rounded text-xs bg-white text-black"
+                 >
+                   <option value="cover">cover</option>
+                   <option value="contain">contain</option>
+                   <option value="auto">auto</option>
+                 </select>
+               </div>
+               <div>
+                 <label className="block text-[10px] text-textMuted uppercase mb-1">Position</label>
+                 <select
+                   value={block.style.backgroundPosition || 'center'}
+                   onChange={(e) => onUpdateStyle(block.id, { backgroundPosition: e.target.value })}
+                   className="w-full p-2 border rounded text-xs bg-white text-black"
+                 >
+                   <option value="center">center</option>
+                   <option value="top">top</option>
+                   <option value="bottom">bottom</option>
+                   <option value="left">left</option>
+                   <option value="right">right</option>
+                 </select>
+               </div>
+               <div>
+                 <label className="block text-[10px] text-textMuted uppercase mb-1">Repeat</label>
+                 <select
+                   value={block.style.backgroundRepeat || 'no-repeat'}
+                   onChange={(e) => onUpdateStyle(block.id, { backgroundRepeat: e.target.value })}
+                   className="w-full p-2 border rounded text-xs bg-white text-black"
+                 >
+                   <option value="no-repeat">no-repeat</option>
+                   <option value="repeat">repeat</option>
+                 </select>
+               </div>
+             </div>
          </div>
        )}
 
+       {block.type !== 'columns' && (
+         <div className="pt-4 border-t border-border space-y-3">
+           <h4 className="text-xs font-bold text-textSecondary uppercase">Spacing</h4>
+           <div>
+             <label className="block text-[10px] text-textMuted uppercase mb-1">Margin (all)</label>
+             <input
+               type="text"
+               value={block.style.margin || ''}
+               onChange={(e) => onUpdateStyle(block.id, { margin: e.target.value })}
+               className="w-full p-2 border rounded text-sm bg-white text-black"
+               placeholder="e.g. 10px 0"
+             />
+           </div>
+           <div className="grid grid-cols-2 gap-2">
+             <div>
+               <label className="block text-[10px] text-textMuted uppercase mb-1">Top</label>
+               <input
+                 type="number"
+                 value={block.style.marginTop ?? ''}
+                 onChange={(e) => onUpdateStyle(block.id, { marginTop: parseInt(e.target.value) || 0 })}
+                 className="w-full p-2 border rounded text-sm bg-white text-black"
+                 placeholder="0"
+               />
+             </div>
+             <div>
+               <label className="block text-[10px] text-textMuted uppercase mb-1">Right</label>
+               <input
+                 type="number"
+                 value={block.style.marginRight ?? ''}
+                 onChange={(e) => onUpdateStyle(block.id, { marginRight: parseInt(e.target.value) || 0 })}
+                 className="w-full p-2 border rounded text-sm bg-white text-black"
+                 placeholder="0"
+               />
+             </div>
+             <div>
+               <label className="block text-[10px] text-textMuted uppercase mb-1">Bottom</label>
+               <input
+                 type="number"
+                 value={block.style.marginBottom ?? ''}
+                 onChange={(e) => onUpdateStyle(block.id, { marginBottom: parseInt(e.target.value) || 0 })}
+                 className="w-full p-2 border rounded text-sm bg-white text-black"
+                 placeholder="0"
+               />
+             </div>
+             <div>
+               <label className="block text-[10px] text-textMuted uppercase mb-1">Left</label>
+               <input
+                 type="number"
+                 value={block.style.marginLeft ?? ''}
+                 onChange={(e) => onUpdateStyle(block.id, { marginLeft: parseInt(e.target.value) || 0 })}
+                 className="w-full p-2 border rounded text-sm bg-white text-black"
+                 placeholder="0"
+               />
+             </div>
+           </div>
+         </div>
+       )}
+
+       {/* --- Responsive (Mobile) --- */}
+       <div className="pt-4 border-t border-border space-y-3">
+         <h4 className="text-xs font-bold text-textSecondary uppercase">Responsive (Mobile)</h4>
+         <div className="grid grid-cols-2 gap-2">
+           <div>
+             <label className="block text-[10px] text-textMuted uppercase mb-1">Font Size</label>
+             <input
+               type="number"
+               value={block.style.mobileFontSize ?? ''}
+               onChange={(e) => onUpdateStyle(block.id, { mobileFontSize: parseInt(e.target.value) || undefined })}
+               className="w-full p-2 border rounded text-sm bg-white text-black"
+               placeholder="auto"
+             />
+           </div>
+           <div>
+             <label className="block text-[10px] text-textMuted uppercase mb-1">Text Align</label>
+             <select
+               value={block.style.mobileTextAlign || ''}
+               onChange={(e) => onUpdateStyle(block.id, { mobileTextAlign: e.target.value || undefined })}
+               className="w-full p-2 border rounded text-xs bg-white text-black"
+             >
+               <option value="">inherit</option>
+               <option value="left">left</option>
+               <option value="center">center</option>
+               <option value="right">right</option>
+             </select>
+           </div>
+         </div>
+         <div>
+           <label className="block text-[10px] text-textMuted uppercase mb-1">Padding (Mobile)</label>
+           <input
+             type="text"
+             value={block.style.mobilePadding || ''}
+             onChange={(e) => onUpdateStyle(block.id, { mobilePadding: e.target.value })}
+             className="w-full p-2 border rounded text-sm bg-white text-black"
+             placeholder="e.g. 12px 16px"
+           />
+         </div>
+         <div>
+           <label className="block text-[10px] text-textMuted uppercase mb-1">Margin (Mobile)</label>
+           <input
+             type="text"
+             value={block.style.mobileMargin || ''}
+             onChange={(e) => onUpdateStyle(block.id, { mobileMargin: e.target.value })}
+             className="w-full p-2 border rounded text-sm bg-white text-black"
+             placeholder="e.g. 8px 0"
+           />
+         </div>
+         <div className="grid grid-cols-2 gap-2">
+           <div>
+             <label className="block text-[10px] text-textMuted uppercase mb-1">Width (Mobile)</label>
+             <input
+               type="text"
+               value={block.style.mobileWidth || ''}
+               onChange={(e) => onUpdateStyle(block.id, { mobileWidth: e.target.value })}
+               className="w-full p-2 border rounded text-sm bg-white text-black"
+               placeholder="100%"
+             />
+           </div>
+           <div>
+             <label className="block text-[10px] text-textMuted uppercase mb-1">Height (Mobile)</label>
+             <input
+               type="text"
+               value={block.style.mobileHeight || ''}
+               onChange={(e) => onUpdateStyle(block.id, { mobileHeight: e.target.value })}
+               className="w-full p-2 border rounded text-sm bg-white text-black"
+               placeholder="auto"
+             />
+           </div>
+         </div>
+         <div>
+           <label className="block text-[10px] text-textMuted uppercase mb-1">Border Radius (Mobile)</label>
+           <input
+             type="number"
+             value={block.style.mobileBorderRadius ?? ''}
+             onChange={(e) => onUpdateStyle(block.id, { mobileBorderRadius: parseInt(e.target.value) || undefined })}
+             className="w-full p-2 border rounded text-sm bg-white text-black"
+             placeholder="0"
+           />
+         </div>
+       </div>
+
        {/* --- TEXT --- */}
-       {block.type === 'text' && (
-         <div className="space-y-4">
+      {block.type === 'text' && (
+        <div className="space-y-4">
             <label className="block text-xs font-bold text-textSecondary">Content</label>
             <textarea 
                rows={6}
@@ -321,14 +564,13 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ block, onUpdateConten
              <div>
                 <label className="block text-xs font-bold text-textSecondary mb-1">Height (px)</label>
                 <input 
-                  type="range" 
+                  type="number" 
                   min="5" 
-                  max="100" 
+                  max="200"
                   value={block.content.height || 20} 
-                  onChange={(e) => onUpdateContent(block.id, { height: parseInt(e.target.value) })} 
-                  className="w-full"
+                  onChange={(e) => onUpdateContent(block.id, { height: parseInt(e.target.value) || 0 })} 
+                  className="w-full p-2 border rounded text-sm bg-white text-black"
                 />
-                <div className="text-right text-xs text-textMuted">{block.content.height || 20}px</div>
              </div>
           </div>
        )}
@@ -342,6 +584,116 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ block, onUpdateConten
                onChange={(color) => onUpdateStyle(block.id, { color })}
             />
           </div>
+       )}
+
+       {block.type === 'badge' && (
+         <div className="space-y-4">
+           <label className="block text-xs font-bold text-textSecondary">Badge Text</label>
+           <input
+             type="text"
+             value={block.content.badgeText || ''}
+             onChange={(e) => onUpdateContent(block.id, { badgeText: e.target.value })}
+             className="w-full p-2 bg-white text-black border border-border rounded text-sm"
+             placeholder="NEW"
+           />
+         </div>
+       )}
+
+       {block.type === 'list' && (
+         <div className="space-y-4">
+           <div className="flex items-center justify-between">
+             <label className="block text-xs font-bold text-textSecondary">List Items</label>
+             <button
+               onClick={() => onUpdateContent(block.id, { items: [...(block.content.items || []), 'New item'] })}
+               className="text-xs font-bold text-primary"
+             >
+               Add Item
+             </button>
+           </div>
+           <div className="space-y-2">
+             {(block.content.items || []).map((item, idx) => (
+               <div key={idx} className="flex items-center gap-2">
+                 <input
+                   type="text"
+                   value={item}
+                   onChange={(e) => {
+                     const items = [...(block.content.items || [])];
+                     items[idx] = e.target.value;
+                     onUpdateContent(block.id, { items });
+                   }}
+                   className="flex-1 p-2 bg-white text-black border border-border rounded text-sm"
+                 />
+                 <button
+                   onClick={() => {
+                     const items = (block.content.items || []).filter((_, i) => i !== idx);
+                     onUpdateContent(block.id, { items });
+                   }}
+                   className="text-xs font-bold text-danger"
+                 >
+                   Remove
+                 </button>
+               </div>
+             ))}
+           </div>
+           <div className="flex items-center gap-2">
+             <input
+               id={`ordered-${block.id}`}
+               type="checkbox"
+               checked={!!block.content.ordered}
+               onChange={(e) => onUpdateContent(block.id, { ordered: e.target.checked })}
+             />
+             <label htmlFor={`ordered-${block.id}`} className="text-xs text-textSecondary">Ordered list</label>
+           </div>
+         </div>
+       )}
+
+       {block.type === 'header' && (
+         <div className="space-y-4">
+           <label className="block text-xs font-bold text-textSecondary">Title</label>
+           <input
+             type="text"
+             value={block.content.title || ''}
+             onChange={(e) => onUpdateContent(block.id, { title: e.target.value })}
+             className="w-full p-2 bg-white text-black border border-border rounded text-sm"
+           />
+           <label className="block text-xs font-bold text-textSecondary">Subtitle</label>
+           <input
+             type="text"
+             value={block.content.subtitle || ''}
+             onChange={(e) => onUpdateContent(block.id, { subtitle: e.target.value })}
+             className="w-full p-2 bg-white text-black border border-border rounded text-sm"
+           />
+           <label className="block text-xs font-bold text-textSecondary">Logo (URL or {{company_logo}})</label>
+           <input
+             type="text"
+             value={block.content.logoUrl || ''}
+             onChange={(e) => onUpdateContent(block.id, { logoUrl: e.target.value })}
+             className="w-full p-2 bg-white text-black border border-border rounded text-sm"
+           />
+         </div>
+       )}
+
+       {block.type === 'footer' && (
+         <div className="space-y-4">
+           <label className="block text-xs font-bold text-textSecondary">Footer Text (HTML allowed)</label>
+           <textarea
+             rows={4}
+             value={block.content.footerText || ''}
+             onChange={(e) => onUpdateContent(block.id, { footerText: e.target.value })}
+             className="w-full p-2 bg-white text-black border border-border rounded text-sm font-mono"
+           />
+           <div className="flex flex-wrap gap-2">
+             {VARIABLES.map(v => (
+               <button 
+                 key={v.value} 
+                 onClick={() => onUpdateContent(block.id, { footerText: (block.content.footerText || '') + v.value })}
+                 className="text-[10px] bg-slate-100 border border-border px-2 py-1 rounded hover:bg-slate-200"
+               >
+                 {v.label}
+               </button>
+             ))}
+           </div>
+         </div>
        )}
 
        {/* --- BUTTON --- */}
@@ -374,7 +726,14 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ block, onUpdateConten
 
               <div>
                   <label className="block text-xs font-bold text-textSecondary mb-1">Border Radius</label>
-                  <input type="range" min="0" max="30" value={block.style.borderRadius} onChange={(e) => onUpdateStyle(block.id, { borderRadius: parseInt(e.target.value) })} className="w-full" />
+                  <input 
+                    type="number" 
+                    min="0" 
+                    max="50"
+                    value={block.style.borderRadius ?? 0} 
+                    onChange={(e) => onUpdateStyle(block.id, { borderRadius: parseInt(e.target.value) || 0 })} 
+                    className="w-full p-2 border rounded text-sm bg-white text-black"
+                  />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>

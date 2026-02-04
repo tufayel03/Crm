@@ -3,7 +3,7 @@ import React from 'react';
 import { EditorBlock, GlobalStyle, Asset } from './types';
 import { renderBlockContent } from './compiler';
 import DropZone from './DropZone';
-import { X, Trash2 } from 'lucide-react';
+import { X, Trash2, Copy, ChevronUp, ChevronDown } from 'lucide-react';
 
 interface BlockRendererProps {
   block: EditorBlock;
@@ -13,16 +13,51 @@ interface BlockRendererProps {
   setActiveBlockId: (id: string | null) => void;
   deleteBlock: (id: string) => void;
   onDrop: (parentId: string | null, index: number, payload: any) => void;
+  onDuplicate: (id: string) => void;
+  onMoveUp: (id: string) => void;
+  onMoveDown: (id: string) => void;
+  previewMode?: 'desktop' | 'mobile';
 }
 
 const BlockRenderer: React.FC<BlockRendererProps> = ({ 
-  block, globalStyle, assets, activeBlockId, setActiveBlockId, deleteBlock, onDrop 
+  block, globalStyle, assets, activeBlockId, setActiveBlockId, deleteBlock, onDrop, onDuplicate, onMoveUp, onMoveDown, previewMode = 'desktop'
 }) => {
   const isSelected = activeBlockId === block.id;
+  const marginStyle = block.style.margin
+    ? block.style.margin
+    : (typeof block.style.marginTop === 'number' &&
+      typeof block.style.marginRight === 'number' &&
+      typeof block.style.marginBottom === 'number' &&
+      typeof block.style.marginLeft === 'number')
+        ? `${block.style.marginTop}px ${block.style.marginRight}px ${block.style.marginBottom}px ${block.style.marginLeft}px`
+        : undefined;
+
+  const isMobile = previewMode === 'mobile';
+  const effectivePadding = isMobile && block.style.mobilePadding ? block.style.mobilePadding : block.style.padding;
+  const effectiveMargin = isMobile && block.style.mobileMargin ? block.style.mobileMargin : marginStyle;
+  const effectiveTextAlign = isMobile && block.style.mobileTextAlign ? block.style.mobileTextAlign : block.style.textAlign;
+  const effectiveWidth = isMobile && block.style.mobileWidth ? block.style.mobileWidth : block.style.width;
+  const effectiveHeight = isMobile && block.style.mobileHeight ? block.style.mobileHeight : block.style.height;
+  const effectiveBorderRadius = isMobile && typeof block.style.mobileBorderRadius === 'number' ? block.style.mobileBorderRadius : block.style.borderRadius;
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     deleteBlock(block.id);
+  };
+
+  const handleDuplicate = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDuplicate(block.id);
+  };
+
+  const handleMoveUp = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onMoveUp(block.id);
+  };
+
+  const handleMoveDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onMoveDown(block.id);
   };
 
   const handleDragStart = (e: React.DragEvent) => {
@@ -41,13 +76,25 @@ const BlockRenderer: React.FC<BlockRendererProps> = ({
         onDragStart={handleDragStart}
         onClick={(e) => { e.stopPropagation(); setActiveBlockId(block.id); }}
         className={`relative mb-2 border-2 transition-all group ${isSelected ? 'border-primary' : 'border-transparent hover:border-primary/30'}`}
+        style={{ margin: effectiveMargin }}
       >
         {isSelected && (
-          <button onClick={handleDelete} className="absolute -right-3 -top-3 bg-red-500 text-white p-1 rounded-full shadow-sm z-10">
-             <X size={12} />
-          </button>
+          <div className="absolute -right-3 -top-3 flex flex-col gap-1 z-10">
+             <button onClick={handleDuplicate} className="bg-white border border-border text-textSecondary p-1 rounded-full shadow-sm hover:bg-slate-50">
+                <Copy size={12} />
+             </button>
+             <button onClick={handleMoveUp} className="bg-white border border-border text-textSecondary p-1 rounded-full shadow-sm hover:bg-slate-50">
+                <ChevronUp size={12} />
+             </button>
+             <button onClick={handleMoveDown} className="bg-white border border-border text-textSecondary p-1 rounded-full shadow-sm hover:bg-slate-50">
+                <ChevronDown size={12} />
+             </button>
+             <button onClick={handleDelete} className="bg-red-500 text-white p-1 rounded-full shadow-sm">
+                <X size={12} />
+             </button>
+          </div>
         )}
-        <div className="flex w-full" style={{ padding: block.style.padding }}>
+        <div className="flex w-full" style={{ padding: effectivePadding }}>
           {block.content.columns.map((col, idx) => (
             <div key={idx} style={{ flex: block.content.layout![idx], minWidth: 0 }} className="outline-1 outline-dashed outline-gray-200 min-h-[50px] p-2 flex flex-col relative">
               
@@ -70,6 +117,10 @@ const BlockRenderer: React.FC<BlockRendererProps> = ({
                                 setActiveBlockId={setActiveBlockId}
                                 deleteBlock={deleteBlock}
                                 onDrop={onDrop}
+                                onDuplicate={onDuplicate}
+                                onMoveUp={onMoveUp}
+                                onMoveDown={onMoveDown}
+                                previewMode={previewMode}
                             />
                             <DropZone parentId={block.id + '_col_' + idx} index={subIdx + 1} onDrop={onDrop} />
                         </React.Fragment>
@@ -91,7 +142,7 @@ const BlockRenderer: React.FC<BlockRendererProps> = ({
         draggable
         onDragStart={handleDragStart}
         onClick={(e) => { e.stopPropagation(); setActiveBlockId(block.id); }}
-        className={`relative mb-2 border-2 transition-all min-h-[50px] flex flex-col ${isSelected ? 'border-primary ring-1 ring-primary/20' : 'border-dashed border-gray-300 hover:border-primary/50'}`}
+        className={`relative mb-2 border-2 transition-all min-h-[50px] flex flex-col ${isSelected ? 'border-primary ring-1 ring-primary/20' : 'border-transparent hover:border-primary/30'}`}
         style={{
            backgroundColor: block.style.backgroundColor,
            background: block.style.backgroundGradient ? block.style.backgroundGradient : undefined,
@@ -99,19 +150,34 @@ const BlockRenderer: React.FC<BlockRendererProps> = ({
            backgroundSize: block.style.backgroundSize || 'cover',
            backgroundPosition: block.style.backgroundPosition || 'center',
            backgroundRepeat: block.style.backgroundRepeat || 'no-repeat',
-           padding: block.style.padding,
-           height: block.style.height || 'auto',
-           width: block.style.width || '100%',
-           textAlign: block.style.textAlign,
+           padding: effectivePadding,
+           border: block.style.border,
+           borderRadius: effectiveBorderRadius,
+           boxShadow: block.style.boxShadow,
+           height: effectiveHeight || 'auto',
+           width: effectiveWidth || '100%',
+           textAlign: effectiveTextAlign,
+           margin: effectiveMargin,
         }}
       >
         {isSelected && (
             <div className="absolute top-0 right-0 bg-primary text-white text-[10px] px-2 py-1 rounded-bl">Div</div>
         )}
         {isSelected && (
-            <button onClick={handleDelete} className="absolute -right-3 -top-3 bg-red-500 text-white p-1 rounded-full shadow-sm z-20">
-                <Trash2 size={12} />
-            </button>
+            <div className="absolute -right-3 -top-3 flex flex-col gap-1 z-20">
+                <button onClick={handleDuplicate} className="bg-white border border-border text-textSecondary p-1 rounded-full shadow-sm hover:bg-slate-50">
+                    <Copy size={12} />
+                </button>
+                <button onClick={handleMoveUp} className="bg-white border border-border text-textSecondary p-1 rounded-full shadow-sm hover:bg-slate-50">
+                    <ChevronUp size={12} />
+                </button>
+                <button onClick={handleMoveDown} className="bg-white border border-border text-textSecondary p-1 rounded-full shadow-sm hover:bg-slate-50">
+                    <ChevronDown size={12} />
+                </button>
+                <button onClick={handleDelete} className="bg-red-500 text-white p-1 rounded-full shadow-sm">
+                <X size={12} />
+                </button>
+            </div>
         )}
         
         {/* Empty State Drop Zone or Nested Content */}
@@ -133,6 +199,10 @@ const BlockRenderer: React.FC<BlockRendererProps> = ({
                            setActiveBlockId={setActiveBlockId}
                            deleteBlock={deleteBlock}
                            onDrop={onDrop}
+                           onDuplicate={onDuplicate}
+                           onMoveUp={onMoveUp}
+                           onMoveDown={onMoveDown}
+                           previewMode={previewMode}
                         />
                         <DropZone parentId={block.id} index={i + 1} onDrop={onDrop} />
                     </React.Fragment>
@@ -144,7 +214,7 @@ const BlockRenderer: React.FC<BlockRendererProps> = ({
   }
 
   // --- STANDARD BLOCKS ---
-  const html = renderBlockContent(block, globalStyle, assets);
+  const html = renderBlockContent(block, globalStyle, assets, undefined, block.id);
 
   return (
     <div 
@@ -153,9 +223,13 @@ const BlockRenderer: React.FC<BlockRendererProps> = ({
       draggable
       onDragStart={handleDragStart}
       className={`relative group cursor-pointer border-2 transition-all ${isSelected ? 'border-primary' : 'border-transparent hover:border-primary/30'}`}
+      style={{ margin: effectiveMargin }}
     >
        {isSelected && (
           <div className="absolute -right-8 top-0 flex flex-col gap-1 z-10">
+             <button onClick={handleDuplicate} className="p-1 bg-white border border-border rounded shadow hover:bg-slate-50 text-textSecondary"><Copy size={14}/></button>
+             <button onClick={handleMoveUp} className="p-1 bg-white border border-border rounded shadow hover:bg-slate-50 text-textSecondary"><ChevronUp size={14}/></button>
+             <button onClick={handleMoveDown} className="p-1 bg-white border border-border rounded shadow hover:bg-slate-50 text-textSecondary"><ChevronDown size={14}/></button>
              <button onClick={handleDelete} className="p-1 bg-white border border-border rounded shadow hover:bg-red-50 text-danger"><Trash2 size={14}/></button>
           </div>
        )}

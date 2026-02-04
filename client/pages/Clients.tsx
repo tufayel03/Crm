@@ -185,15 +185,14 @@ const Clients: React.FC = () => {
               await updateClient(editingClient.id, clientData);
               addNotification('success', 'Client updated.');
           } else {
-              await addClient({
-                  leadId: '',
-                  ...clientData,
-                  services: [],
-                  invoices: [],
-                  documents: [],
-                  notes: [],
-                  onboardedAt: new Date().toISOString()
-              });
+          await addClient({
+              ...clientData,
+              services: [],
+              invoices: [],
+              documents: [],
+              notes: [],
+              onboardedAt: new Date().toISOString()
+          });
               addNotification('success', 'Client created.');
           }
           setIsClientFormModalOpen(false);

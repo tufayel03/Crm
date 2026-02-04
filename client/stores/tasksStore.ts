@@ -8,6 +8,7 @@ interface TasksState {
   createTask: (task: Omit<Task, 'id' | 'status'>) => Promise<void>;
   completeTask: (taskId: string) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
+  deleteCompletedTasks: () => Promise<string[]>;
   rescheduleTask: (taskId: string, newDate: string) => Promise<void>;
   purgeAll: () => Promise<void>;
 }
@@ -39,6 +40,15 @@ export const useTasksStore = create<TasksState>((set, get) => ({
   deleteTask: async (taskId) => {
     await apiRequest(`/api/v1/tasks/${taskId}`, { method: 'DELETE' });
     set(state => ({ tasks: state.tasks.filter(t => t.id !== taskId) }));
+  },
+
+  deleteCompletedTasks: async () => {
+    const result = await apiRequest<{ deletedIds: string[] }>('/api/v1/tasks/completed', { method: 'DELETE' });
+    const deletedIds = result?.deletedIds || [];
+    if (deletedIds.length > 0) {
+      set(state => ({ tasks: state.tasks.filter(t => !deletedIds.includes(t.id)) }));
+    }
+    return deletedIds;
   },
 
   rescheduleTask: async (taskId, newDate) => {

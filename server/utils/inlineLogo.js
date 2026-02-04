@@ -27,15 +27,22 @@ const buildInlineLogo = (general) => {
 };
 
 const injectInlineLogo = (html, general) => {
-  const { logoHtml, attachments } = buildInlineLogo(general);
-  if (!html) return { html, attachments };
+  if (!html) return { html, attachments: [] };
+  const htmlStr = String(html);
+  const logoUrl = general?.logoUrl || '';
+  const usesToken = /{{\s*company_logo\s*}}/i.test(htmlStr);
+  const usesUrl = logoUrl && htmlStr.includes(logoUrl);
+  if (!usesToken && !usesUrl) {
+    return { html: htmlStr, attachments: [] };
+  }
 
-  let nextHtml = String(html);
+  const { logoHtml, attachments } = buildInlineLogo(general);
+
+  let nextHtml = htmlStr;
   if (logoHtml) {
     nextHtml = nextHtml.replace(/{{\s*company_logo\s*}}/g, logoHtml);
   }
 
-  const logoUrl = general?.logoUrl || '';
   if (attachments.length > 0 && logoUrl && nextHtml.includes(logoUrl)) {
     nextHtml = nextHtml.split(logoUrl).join('cid:company_logo');
   }

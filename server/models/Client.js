@@ -24,8 +24,8 @@ const ClientDocumentSchema = new mongoose.Schema({
 const ClientSchema = new mongoose.Schema({
   readableId: { type: Number, unique: true },
   uniqueId: { type: String, required: true, unique: true },
-  leadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lead' },
-  companyName: { type: String, required: true },
+  leadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lead', default: null },
+  companyName: { type: String },
   contactName: { type: String, required: true },
   email: { type: String },
   phone: String,

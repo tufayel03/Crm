@@ -1,5 +1,5 @@
 
-export type BlockType = 'text' | 'image' | 'button' | 'spacer' | 'divider' | 'social' | 'html' | 'columns' | 'div';
+export type BlockType = 'text' | 'image' | 'button' | 'spacer' | 'divider' | 'social' | 'html' | 'columns' | 'div' | 'list' | 'badge' | 'header' | 'footer';
 
 export interface BlockStyle {
   backgroundColor?: string;
@@ -11,6 +11,11 @@ export interface BlockStyle {
   color?: string;
   textGradient?: string; // For text-fill-color gradient
   padding?: string;
+  margin?: string;
+  marginTop?: number;
+  marginBottom?: number;
+  marginLeft?: number;
+  marginRight?: number;
   paddingTop?: number;
   paddingBottom?: number;
   paddingLeft?: number;
@@ -23,6 +28,15 @@ export interface BlockStyle {
   width?: string;
   height?: string;
   border?: string;
+  boxShadow?: string;
+  // Mobile overrides
+  mobilePadding?: string;
+  mobileMargin?: string;
+  mobileFontSize?: number;
+  mobileTextAlign?: 'left' | 'center' | 'right';
+  mobileWidth?: string;
+  mobileHeight?: string;
+  mobileBorderRadius?: number;
 }
 
 export interface SocialItem {
@@ -47,6 +61,16 @@ export interface EditorBlock {
     width?: string;
     height?: string;
     html?: string;
+    // List
+    items?: string[];
+    ordered?: boolean;
+    // Badge
+    badgeText?: string;
+    // Header/Footer
+    title?: string;
+    subtitle?: string;
+    logoUrl?: string;
+    footerText?: string;
     // For social
     socialLinks?: SocialItem[];
     iconStyle?: 'circle' | 'square' | 'rounded';
@@ -61,8 +85,12 @@ export interface EditorBlock {
 
 export interface GlobalStyle {
   backgroundColor: string;
+  backgroundGradient?: string;
   backgroundImage?: string;
   contentWidth: number;
+  contentFullWidth?: boolean;
   contentBackgroundColor: string;
+  contentBackgroundGradient?: string;
+  contentBackgroundImage?: string;
   fontFamily: string;
 }

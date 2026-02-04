@@ -20,6 +20,7 @@ interface ClientsState {
   updateWalletBalance: (clientId: string, amount: number, operation: 'credit' | 'debit' | 'set') => Promise<void>;
 
   addPayment: (payment: Payment) => Promise<void>;
+  updatePayment: (paymentId: string, updates: Partial<Payment>) => Promise<void>;
   updatePaymentStatus: (paymentId: string, status: 'Paid' | 'Due' | 'Overdue') => Promise<void>;
   deletePayment: (paymentId: string) => Promise<void>;
   bulkDeletePayments: (paymentIds: string[]) => Promise<void>;
@@ -124,6 +125,14 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
       body: JSON.stringify(payment)
     });
     set(state => ({ payments: [created, ...state.payments] }));
+  },
+
+  updatePayment: async (paymentId, updates) => {
+    const updated = await apiRequest<Payment>(`/api/v1/payments/${paymentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates)
+    });
+    set(state => ({ payments: state.payments.map(p => p.id === paymentId ? updated : p) }));
   },
 
   updatePaymentStatus: async (paymentId, status) => {

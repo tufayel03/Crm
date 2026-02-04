@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Archive, Loader2, Trash2 } from 'lucide-react';
+import { Archive, Loader2, Trash2, Mail } from 'lucide-react';
 
 interface ClientBulkActionsProps {
   selectedCount: number;
@@ -8,12 +8,14 @@ interface ClientBulkActionsProps {
   onExportZip: () => void;
   onDelete: () => void;
   isExporting: boolean;
+  onEmailBulk?: () => void;
+  isEmailingBulk?: boolean;
   exportProgress?: number;
   exportStatus?: string;
 }
 
 const ClientBulkActions: React.FC<ClientBulkActionsProps> = ({ 
-  selectedCount, onClear, onExportZip, onDelete, isExporting, exportProgress = 0, exportStatus
+  selectedCount, onClear, onExportZip, onDelete, isExporting, onEmailBulk, isEmailingBulk = false, exportProgress = 0, exportStatus
 }) => {
   if (selectedCount === 0) return null;
 
@@ -32,6 +34,17 @@ const ClientBulkActions: React.FC<ClientBulkActionsProps> = ({
                 className="px-3 py-2 bg-red-50 text-danger text-xs font-bold rounded-lg hover:bg-red-100 transition-colors flex items-center gap-2"
             >
                 <Trash2 size={14} /> Delete
+            </button>
+          )}
+
+          {onEmailBulk && (
+            <button 
+              onClick={onEmailBulk}
+              disabled={isEmailingBulk || isExporting}
+              className="px-3 py-2 bg-blue-50 text-primary text-xs font-bold rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-2 disabled:opacity-50"
+            >
+              {isEmailingBulk ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+              {isEmailingBulk ? 'Sending...' : 'Email PDFs'}
             </button>
           )}
           

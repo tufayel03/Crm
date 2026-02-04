@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useMeetingsStore } from '../stores/meetingsStore';
 import { useCampaignStore } from '../stores/campaignStore';
 import { useAuthStore } from '../stores/authStore';
@@ -8,7 +8,7 @@ import { useNotificationStore } from '../stores/notificationStore';
 import { compileHtml } from '../components/email-builder/compiler'; // Need compiler
 import { applyTemplateTokens, buildCompanyTokens } from '../utils/templateTokens';
 import { 
-  Calendar, Plus, List, Grid, ChevronLeft, ChevronRight, Copy, ExternalLink, Edit2, Trash2 
+  Calendar, Plus, List, Grid, ChevronLeft, ChevronRight, Copy, ExternalLink, Edit2, Trash2, CheckSquare, Square
 } from 'lucide-react';
 import { Meeting } from '../types';
 import MeetingFormModal from '../components/meetings/MeetingFormModal';
@@ -29,6 +29,12 @@ const Meetings: React.FC = () => {
   const [editingMeeting, setEditingMeeting] = useState<Meeting | undefined>(undefined);
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedPastIds, setSelectedPastIds] = useState<string[]>([]);
+  const [nowTs, setNowTs] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // --- Helper Functions (Scheduled) ---
   const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
@@ -55,6 +61,26 @@ const Meetings: React.FC = () => {
     const timePart = m.time || '00:00';
     const combined = new Date(`${datePart}T${timePart}`);
     return Number.isNaN(combined.getTime()) ? base : combined;
+  };
+
+  const formatCountdown = (meeting: Meeting) => {
+    const meetingDate = parseMeetingDate(meeting);
+    if (!meetingDate) return '—';
+    const diff = meetingDate.getTime() - nowTs;
+    if (diff <= 0) return 'Started';
+    const totalSeconds = Math.floor(diff / 1000);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    if (days > 0) {
+      return `${days}d ${hours}h ${minutes}m`;
+    }
+    const hh = String(hours).padStart(2, '0');
+    const mm = String(minutes).padStart(2, '0');
+    const ss = String(seconds).padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
   };
 
   const { upcomingMeetings, pastMeetings } = useMemo(() => {
@@ -345,8 +371,8 @@ const Meetings: React.FC = () => {
                                               <th className="px-4 py-4 w-10">
                                                 <button onClick={selectAllPast} className="text-textMuted hover:text-primary transition-colors">
                                                   {selectedPastIds.length > 0 && pastMeetings.length > 0 && pastMeetings.every(m => selectedPastIds.includes(m.id))
-                                                    ? '☑'
-                                                    : '☐'}
+                                                    ? <CheckSquare size={18} className="text-primary" />
+                                                    : <Square size={18} />}
                                                 </button>
                                               </th>
                                             )}
@@ -359,13 +385,16 @@ const Meetings: React.FC = () => {
                                             <th className="px-6 py-4 font-bold text-textMuted uppercase text-xs">Platform</th>
                                             <th className="px-6 py-4 font-bold text-textMuted uppercase text-xs">Link</th>
                                             <th className="px-6 py-4 font-bold text-textMuted uppercase text-xs">Status</th>
+                                            {listTab === 'upcoming' && (
+                                              <th className="px-6 py-4 font-bold text-textMuted uppercase text-xs">Countdown</th>
+                                            )}
                                             <th className="px-6 py-4 font-bold text-textMuted uppercase text-xs text-right">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-border">
                                         {listTab === 'upcoming' && upcomingMeetings.length === 0 ? (
                                             <tr>
-                                                <td colSpan={listTab === 'past' ? 11 : 10} className="px-6 py-12 text-center text-textMuted">
+                                                <td colSpan={listTab === 'past' ? 11 : 11} className="px-6 py-12 text-center text-textMuted">
                                                     No upcoming meetings.
                                                 </td>
                                             </tr>
@@ -419,6 +448,9 @@ const Meetings: React.FC = () => {
                                                                 {meeting.status}
                                                             </span>
                                                         </td>
+                                                        <td className="px-6 py-4">
+                                                            <span className="text-xs font-mono text-textSecondary">{formatCountdown(meeting)}</span>
+                                                        </td>
                                                         <td className="px-6 py-4 text-right">
                                                             <div className="flex items-center justify-end gap-2">
                                                                 <button
@@ -456,7 +488,7 @@ const Meetings: React.FC = () => {
                                                     <tr key={meeting.id} className={`hover:bg-slate-50/60 transition-colors ${selectedPastIds.includes(meeting.id) ? 'bg-softMint/20' : ''}`}>
                                                         <td className="px-4 py-4">
                                                             <button onClick={() => toggleSelectPast(meeting.id)} className="text-textMuted hover:text-primary transition-colors">
-                                                              {selectedPastIds.includes(meeting.id) ? '☑' : '☐'}
+                                                              {selectedPastIds.includes(meeting.id) ? <CheckSquare size={18} className="text-primary" /> : <Square size={18} />}
                                                             </button>
                                                         </td>
                                                         <td className="px-6 py-4 text-textSecondary">{dateLabel}</td>
@@ -524,23 +556,6 @@ const Meetings: React.FC = () => {
                         </div>
                     )}
 
-                    {/* Quick Templates */}
-                    <div className="pt-8 border-t border-border">
-                        <h3 className="font-bold text-textPrimary mb-4 flex items-center gap-2">
-                            <Copy size={18} className="text-textMuted" /> Quick Templates
-                        </h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            {['Discovery Call (30m)', 'Client Onboarding (1h)', 'Weekly Sync (45m)'].map((template, idx) => (
-                                <button 
-                                    key={idx}
-                                    onClick={() => { setIsModalOpen(true); addNotification('info', `Loaded template: ${template}`); }}
-                                    className="p-4 bg-white border border-border rounded-xl text-left hover:border-primary hover:shadow-sm transition-all text-sm font-medium text-textSecondary"
-                                >
-                                    {template}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
                 </div>
       </div>
 

@@ -19,7 +19,7 @@ exports.getClients = async (req, res) => {
 };
 
 exports.createClient = async (req, res) => {
-  const { companyName, contactName, email } = req.body;
+  const { companyName, contactName, email, leadId } = req.body;
   if (!contactName) return res.status(400).json({ message: 'Contact name is required' });
 
   if (email) {
@@ -30,8 +30,11 @@ exports.createClient = async (req, res) => {
   const readableId = await getNextSequence('client');
   const uniqueId = await generateUniqueShortId(Client, 'uniqueId');
 
+  const payload = { ...req.body };
+  if (!leadId) delete payload.leadId;
+
   const client = await Client.create({
-    ...req.body,
+    ...payload,
     readableId,
     uniqueId,
     walletBalance: req.body.walletBalance || 0

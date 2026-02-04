@@ -24,3 +24,21 @@ exports.deleteTask = async (req, res) => {
   res.json({ message: 'Task removed' });
 };
 
+exports.deleteCompletedTasks = async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+  const tasks = await Task.find({
+    status: 'completed',
+    $or: [{ createdBy: userId }, { assignedTo: userId }]
+  }).select('_id');
+
+  const ids = tasks.map(t => t._id.toString());
+  if (ids.length === 0) {
+    return res.json({ deletedIds: [] });
+  }
+
+  await Task.deleteMany({ _id: { $in: ids } });
+  res.json({ deletedIds: ids });
+};
+
