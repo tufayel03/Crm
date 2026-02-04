@@ -33,19 +33,29 @@ const processVariables = (text: string, assets: Asset[], logoUrl?: string) => {
   return processed;
 };
 
+const resolveAssetUrl = (value: string | undefined, assets: Asset[]) => {
+  if (!value) return undefined;
+  const match = value.match(/^{{\s*([^}]+)\s*}}$/);
+  if (!match) return value;
+  const name = match[1].trim();
+  const asset = assets.find(a => a.name === name);
+  return asset?.url || value;
+};
+
 export const renderBlockContent = (b: EditorBlock, globalStyle: GlobalStyle, assets: Asset[] = [], logoUrl?: string, blockId?: string): string => {
   const { style, content } = b;
   const padding = style.padding || '0';
   const fontFamily = style.fontFamily || globalStyle.fontFamily;
   const blockClass = blockId ? `ml-block-${blockId}` : '';
+  const resolvedBackgroundImage = resolveAssetUrl(style.backgroundImage, assets);
   
   // Background Logic
   let backgroundStyle = `background-color: ${style.backgroundColor || 'transparent'};`;
   
   if (style.backgroundGradient) {
       backgroundStyle = `background: ${style.backgroundGradient};`;
-  } else if (style.backgroundImage) {
-    backgroundStyle += `background-image: url('${style.backgroundImage}'); background-size: ${style.backgroundSize || 'cover'}; background-position: ${style.backgroundPosition || 'center'}; background-repeat: ${style.backgroundRepeat || 'no-repeat'};`;
+  } else if (resolvedBackgroundImage) {
+    backgroundStyle += `background-image: url('${resolvedBackgroundImage}'); background-size: ${style.backgroundSize || 'cover'}; background-position: ${style.backgroundPosition || 'center'}; background-repeat: ${style.backgroundRepeat || 'no-repeat'};`;
   }
 
   // Text Color Logic (Gradient Support)
@@ -161,7 +171,7 @@ export const renderBlockContent = (b: EditorBlock, globalStyle: GlobalStyle, ass
         <div class="${blockClass}" style="${divStyle}">
            <!--[if mso]>
            <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:${style.width || '100%'};height:${style.height || 'auto'};">
-           <v:fill type="frame" src="${style.backgroundImage || ''}" color="${style.backgroundColor || 'transparent'}" />
+           <v:fill type="frame" src="${resolvedBackgroundImage || ''}" color="${style.backgroundColor || 'transparent'}" />
            <v:textbox inset="0,0,0,0">
            <![endif]-->
            ${(content.children || []).map(child => renderBlockContent(child, globalStyle, assets, logoUrl, child.id)).join('')}
@@ -175,11 +185,12 @@ export const renderBlockContent = (b: EditorBlock, globalStyle: GlobalStyle, ass
     case 'columns':
       if (!content.columns || !content.layout) return '';
       const totalRatio = content.layout.reduce((a, b) => a + b, 0);
+      const columnsOuterStyle = `${marginParts}${style.border ? `border: ${style.border};` : ''}${style.borderRadius !== undefined ? `border-radius: ${style.borderRadius}px;` : ''}${style.boxShadow ? `box-shadow: ${style.boxShadow};` : ''} box-sizing: border-box;`;
       
       return `
-      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="width: 100%; table-layout: fixed;">
+      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="width: 100%; table-layout: fixed; ${columnsOuterStyle}">
         <tr>
-          <td style="padding: ${padding}; direction: ltr; font-size: 0; text-align: center; vertical-align: top;">
+          <td style="padding: ${padding}; direction: ltr; font-size: 0; text-align: center; vertical-align: top; ${backgroundStyle}">
             <!--[if mso]>
             <table role="presentation" border="0" cellspacing="0" cellpadding="0" width="100%">
             <tr>
@@ -248,13 +259,15 @@ const renderSocialIcons = (block: EditorBlock) => {
 
 export const compileHtml = (blocks: EditorBlock[], globalStyle: GlobalStyle, assets: Asset[] = [], logoUrl?: string): string => {
   const bodyBackground = globalStyle.backgroundGradient || globalStyle.backgroundColor;
-  const bodyImageStyle = globalStyle.backgroundGradient ? '' : (globalStyle.backgroundImage 
-    ? `background-image: url('${globalStyle.backgroundImage}'); background-repeat: repeat; background-position: top center;` 
+  const resolvedBodyBgImage = resolveAssetUrl(globalStyle.backgroundImage, assets);
+  const bodyImageStyle = globalStyle.backgroundGradient ? '' : (resolvedBodyBgImage 
+    ? `background-image: url('${resolvedBodyBgImage}'); background-repeat: repeat; background-position: top center;` 
     : '');
 
   const contentBackground = globalStyle.contentBackgroundGradient || globalStyle.contentBackgroundColor;
-  const contentImageStyle = globalStyle.contentBackgroundGradient ? '' : (globalStyle.contentBackgroundImage
-    ? `background-image: url('${globalStyle.contentBackgroundImage}'); background-repeat: no-repeat; background-position: center; background-size: cover;`
+  const resolvedContentBgImage = resolveAssetUrl(globalStyle.contentBackgroundImage, assets);
+  const contentImageStyle = globalStyle.contentBackgroundGradient ? '' : (resolvedContentBgImage
+    ? `background-image: url('${resolvedContentBgImage}'); background-repeat: no-repeat; background-position: center; background-size: cover;`
     : '');
   const contentMaxWidth = globalStyle.contentFullWidth ? '100%' : `${globalStyle.contentWidth}px`;
 

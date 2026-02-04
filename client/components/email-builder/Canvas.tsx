@@ -22,6 +22,15 @@ interface CanvasProps {
 const Canvas: React.FC<CanvasProps> = ({ 
   blocks, globalStyle, assets, activeBlockId, setActiveBlockId, deleteBlock, duplicateBlock, moveBlockUp, moveBlockDown, previewMode, onDrop
 }) => {
+  const resolveAssetUrl = (value?: string) => {
+    if (!value) return undefined;
+    const match = value.match(/^{{\s*([^}]+)\s*}}$/);
+    if (!match) return value;
+    const name = match[1].trim();
+    const asset = assets.find(a => a.name === name);
+    return asset?.url || value;
+  };
+
   const bodyBackground = globalStyle.backgroundGradient
     ? globalStyle.backgroundGradient
     : globalStyle.backgroundColor;
@@ -30,8 +39,8 @@ const Canvas: React.FC<CanvasProps> = ({
     ? globalStyle.contentBackgroundGradient
     : globalStyle.contentBackgroundColor;
 
-  const contentBgImage = globalStyle.contentBackgroundImage
-    ? `url(${globalStyle.contentBackgroundImage})`
+  const contentBgImage = resolveAssetUrl(globalStyle.contentBackgroundImage)
+    ? `url(${resolveAssetUrl(globalStyle.contentBackgroundImage)})`
     : 'none';
 
   const contentWidth = globalStyle.contentFullWidth
@@ -44,7 +53,7 @@ const Canvas: React.FC<CanvasProps> = ({
       onClick={() => setActiveBlockId(null)}
       style={{
         background: bodyBackground,
-        backgroundImage: globalStyle.backgroundGradient ? undefined : (globalStyle.backgroundImage ? `url(${globalStyle.backgroundImage})` : undefined),
+        backgroundImage: globalStyle.backgroundGradient ? undefined : (resolveAssetUrl(globalStyle.backgroundImage) ? `url(${resolveAssetUrl(globalStyle.backgroundImage)})` : undefined),
         backgroundRepeat: 'repeat',
         backgroundPosition: 'top center'
       }}

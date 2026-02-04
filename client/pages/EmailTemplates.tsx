@@ -854,6 +854,7 @@ const EmailTemplates: React.FC = () => {
             {rightPanelTab === 'properties' && activeBlockId && activeBlock ? (
                 <PropertiesPanel 
                     block={activeBlock} 
+                    assets={assets}
                     onUpdateContent={handleUpdateBlockContent} 
                     onUpdateStyle={handleUpdateBlockStyle} 
                     onClose={() => setActiveBlockId(null)} 

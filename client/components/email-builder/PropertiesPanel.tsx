@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { EditorBlock, SocialItem } from './types';
+import { EditorBlock, SocialItem, Asset } from './types';
 import { 
   AlignLeft, AlignCenter, AlignRight, UploadCloud, 
   Trash2, Plus, GripVertical 
@@ -9,6 +9,7 @@ import { ColorPicker } from './StyleControls';
 
 interface PropertiesPanelProps {
   block: EditorBlock;
+  assets: Asset[];
   onUpdateContent: (id: string, content: any) => void;
   onUpdateStyle: (id: string, style: any) => void;
   onClose: () => void;
@@ -61,7 +62,7 @@ const SOCIAL_NETWORKS = [
   { value: 'email', label: 'Email' }
 ];
 
-const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ block, onUpdateContent, onUpdateStyle, onClose, onDuplicate, onMoveUp, onMoveDown, onDelete }) => {
+const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ block, assets, onUpdateContent, onUpdateStyle, onClose, onDuplicate, onMoveUp, onMoveDown, onDelete }) => {
   const [dragActive, setDragActive] = useState(false);
   
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, isBg: boolean = false) => {
@@ -74,8 +75,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ block, onUpdateConten
       reader.onload = (ev) => {
         if (ev.target?.result) {
           if (isBg) {
-             onUpdateStyle(block.id, { backgroundImage: ev.target.result });
-             onUpdateStyle(block.id, { backgroundGradient: undefined }); 
+             onUpdateStyle(block.id, { backgroundImage: ev.target.result, backgroundGradient: undefined });
           } else {
              onUpdateContent(block.id, { url: ev.target.result });
           }
@@ -101,6 +101,11 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ block, onUpdateConten
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       processFile(e.dataTransfer.files[0], isBg);
     }
+  };
+
+  const insertAssetTag = (assetName: string) => {
+    if (!assetName) return;
+    onUpdateStyle(block.id, { backgroundImage: `{{${assetName}}}`, backgroundGradient: undefined });
   };
 
   // --- Social Media Handlers ---
@@ -229,6 +234,24 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ block, onUpdateConten
                     <span className="text-xs text-textSecondary">{dragActive ? 'Drop image here' : 'Upload or Drop'}</span>
                     <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, true)} />
                 </label>
+                {assets.length > 0 && (
+                  <div className="mb-2">
+                    <label className="block text-[10px] text-textMuted uppercase mb-1">Use Asset Tag</label>
+                    <select
+                      className="w-full p-2 border rounded text-xs bg-white text-black"
+                      defaultValue=""
+                      onChange={(e) => {
+                        insertAssetTag(e.target.value);
+                        e.currentTarget.value = '';
+                      }}
+                    >
+                      <option value="">Insert asset tag...</option>
+                      {assets.map(asset => (
+                        <option key={asset.id} value={asset.name}>{asset.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <input 
                   type="text" 
                   value={block.style.backgroundImage || ''} 
@@ -776,6 +799,87 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ block, onUpdateConten
             </div>
           </div>
        </div>
+
+       {block.type !== 'div' && (
+         <div className="pt-4 border-t border-border space-y-3">
+           <h4 className="text-xs font-bold text-textMuted uppercase">Background Image</h4>
+           <label 
+              className={`flex items-center justify-center gap-2 px-4 py-4 border-2 border-dashed rounded-lg font-bold cursor-pointer transition-all ${dragActive ? 'border-primary bg-softMint/40' : 'border-border bg-slate-50'}`}
+              onDragEnter={handleDrag}
+              onDragLeave={handleDrag}
+              onDragOver={handleDrag}
+              onDrop={(e) => handleDrop(e, true)}
+           >
+              <UploadCloud size={16} className={dragActive ? 'text-primary' : 'text-textMuted'} /> 
+              <span className="text-xs text-textSecondary">{dragActive ? 'Drop image here' : 'Upload or Drop'}</span>
+              <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, true)} />
+          </label>
+          {assets.length > 0 && (
+            <div>
+              <label className="block text-[10px] text-textMuted uppercase mb-1">Use Asset Tag</label>
+              <select
+                className="w-full p-2 border rounded text-xs bg-white text-black"
+                defaultValue=""
+                onChange={(e) => {
+                  insertAssetTag(e.target.value);
+                  e.currentTarget.value = '';
+                }}
+              >
+                <option value="">Insert asset tag...</option>
+                {assets.map(asset => (
+                  <option key={asset.id} value={asset.name}>{asset.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <input 
+            type="text" 
+            value={block.style.backgroundImage || ''} 
+            onChange={(e) => onUpdateStyle(block.id, { backgroundImage: e.target.value, backgroundGradient: undefined })} 
+            className="w-full p-2 border rounded text-xs bg-white text-black" 
+            placeholder="Image URL..." 
+          />
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="block text-[10px] text-textMuted uppercase mb-1">Size</label>
+              <select
+                value={block.style.backgroundSize || 'cover'}
+                onChange={(e) => onUpdateStyle(block.id, { backgroundSize: e.target.value })}
+                className="w-full p-2 border rounded text-xs bg-white text-black"
+              >
+                <option value="cover">cover</option>
+                <option value="contain">contain</option>
+                <option value="auto">auto</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] text-textMuted uppercase mb-1">Position</label>
+              <select
+                value={block.style.backgroundPosition || 'center'}
+                onChange={(e) => onUpdateStyle(block.id, { backgroundPosition: e.target.value })}
+                className="w-full p-2 border rounded text-xs bg-white text-black"
+              >
+                <option value="center">center</option>
+                <option value="top">top</option>
+                <option value="bottom">bottom</option>
+                <option value="left">left</option>
+                <option value="right">right</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] text-textMuted uppercase mb-1">Repeat</label>
+              <select
+                value={block.style.backgroundRepeat || 'no-repeat'}
+                onChange={(e) => onUpdateStyle(block.id, { backgroundRepeat: e.target.value })}
+                className="w-full p-2 border rounded text-xs bg-white text-black"
+              >
+                <option value="no-repeat">no-repeat</option>
+                <option value="repeat">repeat</option>
+              </select>
+            </div>
+          </div>
+         </div>
+       )}
 
     </div>
   );

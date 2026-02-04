@@ -22,6 +22,15 @@ interface BlockRendererProps {
 const BlockRenderer: React.FC<BlockRendererProps> = ({ 
   block, globalStyle, assets, activeBlockId, setActiveBlockId, deleteBlock, onDrop, onDuplicate, onMoveUp, onMoveDown, previewMode = 'desktop'
 }) => {
+  const resolveAssetUrl = (value?: string) => {
+    if (!value) return undefined;
+    const match = value.match(/^{{\s*([^}]+)\s*}}$/);
+    if (!match) return value;
+    const name = match[1].trim();
+    const asset = assets.find(a => a.name === name);
+    return asset?.url || value;
+  };
+
   const isSelected = activeBlockId === block.id;
   const marginStyle = block.style.margin
     ? block.style.margin
@@ -69,6 +78,26 @@ const BlockRenderer: React.FC<BlockRendererProps> = ({
 
   // --- COLUMNS RENDERING ---
   if (block.type === 'columns' && block.content.columns && block.content.layout) {
+    const columnsOuterStyle: React.CSSProperties = {
+      margin: effectiveMargin,
+      border: block.style.border,
+      borderRadius: effectiveBorderRadius,
+      boxShadow: block.style.boxShadow,
+      overflow: block.style.borderRadius ? 'hidden' : undefined,
+    };
+
+    const columnsInnerStyle: React.CSSProperties = {
+      padding: effectivePadding,
+      textAlign: effectiveTextAlign,
+      backgroundColor: block.style.backgroundColor,
+      background: block.style.backgroundGradient ? block.style.backgroundGradient : undefined,
+      backgroundImage: (!block.style.backgroundGradient && resolveAssetUrl(block.style.backgroundImage)) ? `url("${resolveAssetUrl(block.style.backgroundImage)}")` : undefined,
+      backgroundSize: block.style.backgroundSize || 'cover',
+      backgroundPosition: block.style.backgroundPosition || 'center',
+      backgroundRepeat: block.style.backgroundRepeat || 'no-repeat',
+      borderRadius: effectiveBorderRadius,
+    };
+
     return (
       <div 
         key={block.id}
@@ -76,7 +105,7 @@ const BlockRenderer: React.FC<BlockRendererProps> = ({
         onDragStart={handleDragStart}
         onClick={(e) => { e.stopPropagation(); setActiveBlockId(block.id); }}
         className={`relative mb-2 border-2 transition-all group ${isSelected ? 'border-primary' : 'border-transparent hover:border-primary/30'}`}
-        style={{ margin: effectiveMargin }}
+        style={columnsOuterStyle}
       >
         {isSelected && (
           <div className="absolute -right-3 -top-3 flex flex-col gap-1 z-10">
@@ -94,7 +123,7 @@ const BlockRenderer: React.FC<BlockRendererProps> = ({
              </button>
           </div>
         )}
-        <div className="flex w-full" style={{ padding: effectivePadding }}>
+        <div className="flex w-full" style={columnsInnerStyle}>
           {block.content.columns.map((col, idx) => (
             <div key={idx} style={{ flex: block.content.layout![idx], minWidth: 0 }} className="outline-1 outline-dashed outline-gray-200 min-h-[50px] p-2 flex flex-col relative">
               
@@ -146,7 +175,7 @@ const BlockRenderer: React.FC<BlockRendererProps> = ({
         style={{
            backgroundColor: block.style.backgroundColor,
            background: block.style.backgroundGradient ? block.style.backgroundGradient : undefined,
-           backgroundImage: (!block.style.backgroundGradient && block.style.backgroundImage) ? `url(${block.style.backgroundImage})` : undefined,
+           backgroundImage: (!block.style.backgroundGradient && resolveAssetUrl(block.style.backgroundImage)) ? `url("${resolveAssetUrl(block.style.backgroundImage)}")` : undefined,
            backgroundSize: block.style.backgroundSize || 'cover',
            backgroundPosition: block.style.backgroundPosition || 'center',
            backgroundRepeat: block.style.backgroundRepeat || 'no-repeat',
