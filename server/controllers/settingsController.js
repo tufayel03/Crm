@@ -37,6 +37,7 @@ const DEFAULT_LEAD_OUTCOMES = ['Busy', 'Follow-up', 'Interested', 'Not Intereste
 
 const buildDefaultSettings = () => ({
   emailAccounts: [],
+  mailboxSync: [],
   generalSettings: {
     companyName: 'Matlance',
     workspaceSlug: 'matlance-hq',
@@ -88,6 +89,7 @@ exports.updateSettings = async (req, res) => {
 
   const merged = {
     emailAccounts: updates.emailAccounts ?? settings.emailAccounts ?? defaults.emailAccounts,
+    mailboxSync: settings.mailboxSync ?? defaults.mailboxSync,
     generalSettings: { ...defaults.generalSettings, ...settings.generalSettings, ...(updates.generalSettings || {}) },
     systemTemplates: { ...defaults.systemTemplates, ...settings.systemTemplates, ...(updates.systemTemplates || {}) },
     ipRules: { ...defaults.ipRules, ...settings.ipRules, ...(updates.ipRules || {}) },

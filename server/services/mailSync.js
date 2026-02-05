@@ -20,7 +20,7 @@ const buildAccountConfig = (account) => {
   return { host, port, secure, doSTARTTLS: startTLS, auth: { user, pass } };
 };
 
-const fetchMessagesForAccount = async (account, limit = 1000) => {
+const fetchMessagesForAccount = async (account, limit = 1000, lastUid = 0) => {
   const config = buildAccountConfig(account);
   console.log('[MailSync] Config:', { ...config, auth: { user: config.auth.user, pass: '***' } });
 
@@ -47,39 +47,80 @@ const fetchMessagesForAccount = async (account, limit = 1000) => {
       console.log(`[MailSync] Mailbox has ${exists} messages.`);
       if (exists === 0) return [];
 
-      const start = Math.max(1, exists - limit + 1);
-      const range = `${start}:${exists}`;
+      const fetchByUids = async (uids) => {
+        if (!uids || uids.length === 0) return;
+        const existing = await MailMessage.find({ accountId: String(account.id), imapUid: { $in: uids } })
+          .select('imapUid')
+          .lean();
+        const existingSet = new Set(existing.map(e => e.imapUid));
+        const newUids = uids.filter(uid => !existingSet.has(uid));
+        if (newUids.length === 0) return;
 
-      console.log(`[MailSync] Fetching range: ${range}`);
+        const chunkSize = 50;
+        for (let i = 0; i < newUids.length; i += chunkSize) {
+          const chunk = newUids.slice(i, i + chunkSize);
+          const uidRange = chunk.join(',');
+          const fetchOpts = { uid: true, flags: true, source: true, internalDate: true, envelope: true };
+          console.log(`[MailSync] Fetching UID set: ${uidRange}`);
+          for await (const msg of client.fetch(uidRange, fetchOpts)) {
+            console.log(`[MailSync] Processing msg UID: ${msg.uid}`);
+            const parsed = await simpleParser(msg.source);
+            const fromAddress = parsed.from?.value?.[0]?.address || '';
+            const fromName = parsed.from?.value?.[0]?.name || fromAddress;
+            const toAddress = parsed.to?.value?.[0]?.address || account.email;
+            const subject = parsed.subject || '(no subject)';
+            const html = parsed.html || parsed.textAsHtml || (parsed.text ? `<pre>${parsed.text}</pre>` : '');
+            const messageId = parsed.messageId || msg.envelope?.messageId || '';
 
-      for await (const msg of client.fetch(range, { uid: true, flags: true, source: true, internalDate: true, envelope: true })) {
-        console.log(`[MailSync] Processing msg UID: ${msg.uid}`);
-        const parsed = await simpleParser(msg.source);
-        const fromAddress = parsed.from?.value?.[0]?.address || '';
-        const fromName = parsed.from?.value?.[0]?.name || fromAddress;
-        const toAddress = parsed.to?.value?.[0]?.address || account.email;
-        const subject = parsed.subject || '(no subject)';
-        const html = parsed.html || parsed.textAsHtml || (parsed.text ? `<pre>${parsed.text}</pre>` : '');
-        const messageId = parsed.messageId || msg.envelope?.messageId || '';
+            results.push({
+              accountId: String(account.id),
+              accountEmail: account.email,
+              imapUid: msg.uid,
+              messageId,
+              from: fromAddress,
+              fromName,
+              to: toAddress,
+              subject,
+              body: html,
+              timestamp: parsed.date || msg.internalDate || new Date(),
+              isRead: (msg.flags instanceof Set ? msg.flags.has('\\Seen') : (msg.flags || []).includes('\\Seen')),
+              isStarred: (msg.flags instanceof Set ? msg.flags.has('\\Flagged') : (msg.flags || []).includes('\\Flagged')),
+              attachments: (parsed.attachments || []).map(a => ({
+                name: a.filename || 'attachment',
+                size: a.size ? `${Math.round(a.size / 1024)} KB` : 'unknown'
+              }))
+            });
+          }
+        }
+      };
 
-        results.push({
-          accountId: String(account.id),
-          accountEmail: account.email,
-          imapUid: msg.uid,
-          messageId,
-          from: fromAddress,
-          fromName,
-          to: toAddress,
-          subject,
-          body: html,
-          timestamp: parsed.date || msg.internalDate || new Date(),
-          isRead: (msg.flags instanceof Set ? msg.flags.has('\\Seen') : (msg.flags || []).includes('\\Seen')),
-          isStarred: (msg.flags instanceof Set ? msg.flags.has('\\Flagged') : (msg.flags || []).includes('\\Flagged')),
-          attachments: (parsed.attachments || []).map(a => ({
-            name: a.filename || 'attachment',
-            size: a.size ? `${Math.round(a.size / 1024)} KB` : 'unknown'
-          }))
-        });
+      try {
+        let uids = await client.search({ all: true }, { uid: true });
+        if (!Array.isArray(uids)) uids = [];
+        uids = uids.map(n => Number(n)).filter(n => !Number.isNaN(n)).sort((a, b) => a - b);
+
+        if (uids.length === 0) return [];
+
+        let targetUids = [];
+        if (lastUid && lastUid > 0) {
+          targetUids = uids.filter(uid => uid > lastUid);
+        } else {
+          targetUids = uids.slice(-limit);
+        }
+
+        if (targetUids.length === 0) return [];
+        await fetchByUids(targetUids);
+      } catch (err) {
+        const message = String(err?.message || '');
+        const responseText = String(err?.responseText || '');
+        if (message.toLowerCase().includes('invalid messageset') || responseText.toLowerCase().includes('invalid messageset')) {
+          const uids = await client.search({ all: true }, { uid: true });
+          const clean = (uids || []).map(n => Number(n)).filter(n => !Number.isNaN(n)).sort((a, b) => a - b);
+          const targetUids = clean.slice(-limit);
+          await fetchByUids(targetUids);
+        } else {
+          throw err;
+        }
       }
     } finally {
       lock.release();
@@ -95,7 +136,32 @@ const fetchMessagesForAccount = async (account, limit = 1000) => {
 };
 
 const syncAccount = async (account, limit = 1000) => {
-  const messages = await fetchMessagesForAccount(account, limit);
+  const settings = await Settings.findOne({});
+  const syncState = (settings?.mailboxSync || []).find(s => String(s.accountId) === String(account.id));
+  let lastUid = Number(syncState?.lastUid || 0);
+  if (Number.isNaN(lastUid) || lastUid < 0) lastUid = 0;
+
+  let messages = [];
+  try {
+    messages = await fetchMessagesForAccount(account, limit, lastUid);
+  } catch (err) {
+    const message = String(err?.message || '');
+    const responseText = String(err?.responseText || '');
+    if (message.toLowerCase().includes('invalid messageset') || responseText.toLowerCase().includes('invalid messageset')) {
+      if (settings) {
+        const nextSync = settings.mailboxSync || [];
+        const idx = nextSync.findIndex(s => String(s.accountId) === String(account.id));
+        const entry = { accountId: String(account.id), lastUid: 0, lastSyncAt: new Date() };
+        if (idx >= 0) nextSync[idx] = { ...nextSync[idx], ...entry };
+        else nextSync.push(entry);
+        settings.mailboxSync = nextSync;
+        await settings.save();
+      }
+      messages = await fetchMessagesForAccount(account, limit, 0);
+    } else {
+      throw err;
+    }
+  }
   if (messages.length === 0) return 0;
 
 
@@ -104,7 +170,9 @@ const syncAccount = async (account, limit = 1000) => {
   const Lead = require('../models/Lead');
   const Client = require('../models/Client');
 
+  let maxUid = lastUid;
   for (const msg of messages) {
+    if (msg.imapUid && msg.imapUid > maxUid) maxUid = msg.imapUid;
     // Determine Folder Logic
     let folder = 'General';
     const email = msg.from.toLowerCase();
@@ -161,6 +229,16 @@ const syncAccount = async (account, limit = 1000) => {
       { $set: msg },
       { upsert: true }
     );
+  }
+
+  if (settings) {
+    const nextSync = settings.mailboxSync || [];
+    const idx = nextSync.findIndex(s => String(s.accountId) === String(account.id));
+    const entry = { accountId: String(account.id), lastUid: maxUid, lastSyncAt: new Date() };
+    if (idx >= 0) nextSync[idx] = { ...nextSync[idx], ...entry };
+    else nextSync.push(entry);
+    settings.mailboxSync = nextSync;
+    await settings.save();
   }
 
   return messages.length;

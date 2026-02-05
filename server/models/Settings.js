@@ -20,6 +20,14 @@ const EmailAccountSchema = new mongoose.Schema({
 
 const SettingsSchema = new mongoose.Schema({
   emailAccounts: [EmailAccountSchema],
+  mailboxSync: {
+    type: [{
+      accountId: String,
+      lastUid: Number,
+      lastSyncAt: Date
+    }],
+    default: []
+  },
   generalSettings: {
     companyName: String,
     workspaceSlug: String,
@@ -68,4 +76,3 @@ SettingsSchema.set('toJSON', {
 });
 
 module.exports = mongoose.model('Settings', SettingsSchema);
-

@@ -42,7 +42,7 @@ export const useMailStore = create<MailState>((set, get) => ({
   fetchEmails: async (accountId = 'all') => {
     set({ refreshing: true, error: null });
     try {
-      const data = await apiRequest<any>(`/api/v1/mailbox/messages?accountId=${encodeURIComponent(accountId)}&limit=1000`);
+      const data = await apiRequest<any>(`/api/v1/mailbox/messages?accountId=${encodeURIComponent(accountId)}&limit=100000`);
       if (Array.isArray(data)) {
         set({ emails: data, refreshing: false, error: null });
         return;
@@ -59,7 +59,7 @@ export const useMailStore = create<MailState>((set, get) => ({
     }
   },
 
-  syncEmails: async (limit = 1000) => {
+  syncEmails: async (limit = 100000) => {
     try {
       const res = await apiRequest<any>('/api/v1/mailbox/sync', { method: 'POST', body: JSON.stringify({ limit }) });
       const errors = Array.isArray(res?.errors) ? res.errors.filter(Boolean) : [];

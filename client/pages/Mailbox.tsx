@@ -69,10 +69,14 @@ const Mailbox: React.FC = () => {
     useEffect(() => {
         if (emailAccounts.length === 0) return;
         fetchEmails(selectedAccountId);
-        const id1 = setInterval(() => fetchEmails(selectedAccountId), 10000);
-        const id2 = setInterval(() => syncEmails(), 5 * 60 * 1000);
-        return () => { clearInterval(id1); clearInterval(id2); };
-    }, [selectedAccountId, emailAccounts, fetchEmails, syncEmails]);
+        const interval = setInterval(async () => {
+            if (selectedFolder !== 'Trash') {
+                await syncEmails();
+            }
+            await fetchEmails(selectedAccountId);
+        }, 30 * 60 * 1000);
+        return () => clearInterval(interval);
+    }, [selectedAccountId, emailAccounts, fetchEmails, syncEmails, selectedFolder]);
 
     // Derived Labels (from Settings + existing emails)
     const availableLabels = useMemo(() => {
@@ -590,7 +594,16 @@ const Mailbox: React.FC = () => {
                                 </button>
                             </div>
 
-                            <button onClick={async () => { await syncEmails(); fetchEmails(selectedAccountId); }} className="p-2 hover:bg-gray-100 rounded-full" title="Refresh">
+                            <button
+                                onClick={async () => {
+                                    if (selectedFolder !== 'Trash') {
+                                        await syncEmails();
+                                    }
+                                    fetchEmails(selectedAccountId);
+                                }}
+                                className="p-2 hover:bg-gray-100 rounded-full"
+                                title="Refresh"
+                            >
                                 <RefreshCw size={20} className={refreshing ? 'animate-spin' : ''} />
                             </button>
                             <button
@@ -884,7 +897,11 @@ const Mailbox: React.FC = () => {
                                 const currentSubject = cleanSubject(selectedEmail.subject);
 
                                 const thread = emails
-                                    .filter(e => cleanSubject(e.subject) === currentSubject)
+                                    .filter(e => {
+                                        if (e.folder === 'DELETED') return false;
+                                        if (selectedFolder !== 'Trash' && e.folder === 'TRASH') return false;
+                                        return cleanSubject(e.subject) === currentSubject;
+                                    })
                                     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
                                 return thread.map((msg, index) => (
