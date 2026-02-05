@@ -1,12 +1,13 @@
 {
-    "name":  "matlance-root",
-    "private":  true,
-    "scripts":  {
-                    "client":  "npm --prefix client run dev",
-                    "server":  "npm --prefix server run dev",
-                    "dev":  "concurrently \"npm --prefix server run dev\" \"npm --prefix client run dev\""
-                },
-    "devDependencies":  {
-                            "concurrently":  "^8.2.2"
-                        }
+    "name": "matlance-root",
+    "private": true,
+    "scripts": {
+        "client": "npm --prefix client run dev",
+        "server": "npm --prefix server run dev",
+        "install-all": "npm install && npm --prefix client install && npm --prefix server install",
+        "dev": "concurrently \"npm --prefix server run dev\" \"npm --prefix client run dev\""
+    },
+    "devDependencies": {
+        "concurrently": "^8.2.2"
+    }
 }
