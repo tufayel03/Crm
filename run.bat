@@ -8,15 +8,30 @@ echo.
 :: 1. Check if Docker is installed
 docker --version >nul 2>&1
 if %errorlevel% neq 0 (
+    echo.
     echo [!] Docker is NOT installed.
-    echo [+] Attempting to install Docker Desktop automatically...
-    echo     (You may be prompted for Administrator permission)
+    echo [+] Checking for Windows Package Manager (winget)...
     
-    winget install -e --id Docker.DockerDesktop --accept-package-agreements --accept-source-agreements
+    where winget >nul 2>&1
+    if %errorlevel% neq 0 (
+        echo [X] Winget is not detected. Cannot install automatically.
+        echo     Please install Docker Desktop manually from:
+        echo     https://www.docker.com/products/docker-desktop/
+        pause
+        exit /b
+    )
+
+    echo [+] Attempting to install Docker Desktop automatically...
+    echo     (Please click 'Yes' if prompted for Administrator permission)
+    
+    :: Try installing Docker
+    winget install --id Docker.DockerDesktop -e --accept-package-agreements --accept-source-agreements
     
     if %errorlevel% neq 0 (
         echo.
         echo [X] Automatic installation failed.
+        echo     Reason: Winget command returned an error.
+        echo.
         echo     Please install Docker Desktop manually from: 
         echo     https://www.docker.com/products/docker-desktop/
         pause
@@ -24,9 +39,11 @@ if %errorlevel% neq 0 (
     )
     
     echo.
+    echo ========================================================
     echo [v] Docker successfully installed!
-    echo [!] You MUST restart your computer now to finish the installation.
+    echo [!] You MUST restart your computer now.
     echo     After restarting, run this script again.
+    echo ========================================================
     pause
     exit /b
 )
