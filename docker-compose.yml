@@ -1,23 +1,51 @@
+version: '3.8'
+
 services:
+  # 1. MongoDB Service (Database)
+  mongo:
+    image: mongo:6.0
+    container_name: matlance_mongo
+    restart: always
+    ports:
+      - "27017:27017" # Exposed for local debugging (Compass)
+    volumes:
+      - mongo_data:/data/db
+
+  # 2. Backend API
   api:
     build:
       context: ./server
-    env_file:
-      - ./server/.env
+    container_name: matlance_api
+    restart: always
+    depends_on:
+      - mongo
     ports:
       - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - MONGO_URI=mongodb://mongo:27017/matlance
+      - CORS_ORIGINS=http://localhost:3000
+      - JWT_SECRET=dev_secret_change_me_in_prod
+      - JWT_EXPIRES_IN=30d
+      # Default Admin (Auto-seeded if logic exists, otherwise generic envs)
+      - ADMIN_EMAIL=admin@example.com
+      - ADMIN_PASSWORD=admin123
+      # Optional: Add SMTP/S3 here if needed, or ask user to create .env
     volumes:
       - uploads_data:/app/uploads
 
+  # 3. Frontend (Web App)
   web:
     build:
       context: ./client
-    environment:
-      - VITE_API_URL=http://localhost:5000
+    container_name: matlance_web
+    restart: always
     ports:
       - "3000:80"
     depends_on:
       - api
 
 volumes:
+  mongo_data:
   uploads_data:
