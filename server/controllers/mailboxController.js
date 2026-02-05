@@ -3,8 +3,8 @@ const MailMessage = require('../models/MailMessage');
 const { syncAllAccounts } = require('../services/mailSync');
 
 exports.getMessages = async (req, res) => {
-  const { accountId = 'all', limit = '50' } = req.query;
-  const max = Math.min(parseInt(limit, 10) || 50, 200);
+  const { accountId = 'all', limit = '1000' } = req.query;
+  const max = Math.min(parseInt(limit, 10) || 1000, 10000);
 
   const settings = await Settings.findOne({});
   if (!settings) return res.status(404).json({ message: 'Settings not found' });
@@ -23,8 +23,8 @@ exports.getMessages = async (req, res) => {
 };
 
 exports.syncNow = async (req, res) => {
-  const { limit = 50 } = req.body || {};
-  const result = await syncAllAccounts(Math.min(parseInt(limit, 10) || 50, 200));
+  const { limit = 1000 } = req.body || {};
+  const result = await syncAllAccounts(Math.min(parseInt(limit, 10) || 1000, 10000));
   res.json(result);
 };
 

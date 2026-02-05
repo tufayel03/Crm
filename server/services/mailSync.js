@@ -20,11 +20,15 @@ const buildAccountConfig = (account) => {
   return { host, port, secure, doSTARTTLS: startTLS, auth: { user, pass } };
 };
 
-const fetchMessagesForAccount = async (account, limit = 50) => {
+const fetchMessagesForAccount = async (account, limit = 1000) => {
+  const config = buildAccountConfig(account);
+  console.log('[MailSync] Config:', { ...config, auth: { user: config.auth.user, pass: '***' } });
+
+
   const client = new ImapFlow({
-    ...buildAccountConfig(account),
-    socketTimeout: 30000,
-    greetingTimeout: 30000,
+    ...config,
+    socketTimeout: 60000,
+    greetingTimeout: 60000,
     logger: false
   });
   let lastError = null;
@@ -36,15 +40,20 @@ const fetchMessagesForAccount = async (account, limit = 50) => {
 
   try {
     await client.connect();
+    console.log(`[MailSync] Connected to ${account.email} at ${account.imapHost || 'default-host'}`);
     const lock = await client.getMailboxLock('INBOX');
     try {
       const exists = client.mailbox.exists || 0;
+      console.log(`[MailSync] Mailbox has ${exists} messages.`);
       if (exists === 0) return [];
 
       const start = Math.max(1, exists - limit + 1);
       const range = `${start}:${exists}`;
 
+      console.log(`[MailSync] Fetching range: ${range}`);
+
       for await (const msg of client.fetch(range, { uid: true, flags: true, source: true, internalDate: true, envelope: true })) {
+        console.log(`[MailSync] Processing msg UID: ${msg.uid}`);
         const parsed = await simpleParser(msg.source);
         const fromAddress = parsed.from?.value?.[0]?.address || '';
         const fromName = parsed.from?.value?.[0]?.name || fromAddress;
@@ -64,8 +73,8 @@ const fetchMessagesForAccount = async (account, limit = 50) => {
           subject,
           body: html,
           timestamp: parsed.date || msg.internalDate || new Date(),
-          isRead: (msg.flags || []).includes('\\Seen'),
-          isStarred: (msg.flags || []).includes('\\Flagged'),
+          isRead: (msg.flags instanceof Set ? msg.flags.has('\\Seen') : (msg.flags || []).includes('\\Seen')),
+          isStarred: (msg.flags instanceof Set ? msg.flags.has('\\Flagged') : (msg.flags || []).includes('\\Flagged')),
           attachments: (parsed.attachments || []).map(a => ({
             name: a.filename || 'attachment',
             size: a.size ? `${Math.round(a.size / 1024)} KB` : 'unknown'
@@ -85,9 +94,10 @@ const fetchMessagesForAccount = async (account, limit = 50) => {
   return results;
 };
 
-const syncAccount = async (account, limit = 50) => {
+const syncAccount = async (account, limit = 1000) => {
   const messages = await fetchMessagesForAccount(account, limit);
   if (messages.length === 0) return 0;
+
 
   // Import models inside the function or top level to ensure they are available
   // (Already imported at top)
@@ -137,7 +147,7 @@ const syncAccount = async (account, limit = 50) => {
   return messages.length;
 };
 
-const syncAllAccounts = async (limit = 50) => {
+const syncAllAccounts = async (limit = 1000) => {
   const settings = await Settings.findOne({});
   const accounts = settings?.emailAccounts || [];
   if (accounts.length === 0) return { synced: 0, errors: [] };
@@ -146,8 +156,12 @@ const syncAllAccounts = async (limit = 50) => {
   const errors = [];
   for (const account of accounts) {
     try {
-      synced += await syncAccount(account, limit);
+      console.log(`[MailSync] Syncing account: ${account.email}`);
+      const count = await syncAccount(account, limit);
+      synced += count;
+      console.log(`[MailSync] Account ${account.email} synced ${count} messages.`);
     } catch (err) {
+      console.error(`[MailSync] Error syncing ${account.email}:`, err);
       errors.push(`Account ${account.email || account.id}: ${err.message || 'Sync failed'}`);
     }
   }
@@ -155,7 +169,7 @@ const syncAllAccounts = async (limit = 50) => {
   return { synced, errors };
 };
 
-const startMailboxSync = ({ intervalMs = 5 * 60 * 1000, limit = 50 } = {}) => {
+const startMailboxSync = ({ intervalMs = 5 * 60 * 1000, limit = 1000 } = {}) => {
   let running = false;
 
   const tick = async () => {

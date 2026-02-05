@@ -28,7 +28,7 @@ interface MailState {
   deleteEmail: (id: string) => void;
 }
 
-export const useMailStore = create<MailState>((set) => ({
+export const useMailStore = create<MailState>((set, get) => ({
   emails: [],
   refreshing: false,
   error: null,
@@ -36,7 +36,7 @@ export const useMailStore = create<MailState>((set) => ({
   fetchEmails: async (accountId = 'all') => {
     set({ refreshing: true, error: null });
     try {
-      const data = await apiRequest<any>(`/api/v1/mailbox/messages?accountId=${encodeURIComponent(accountId)}&limit=50`);
+      const data = await apiRequest<any>(`/api/v1/mailbox/messages?accountId=${encodeURIComponent(accountId)}&limit=1000`);
       if (Array.isArray(data)) {
         set({ emails: data, refreshing: false, error: null });
         return;
@@ -53,7 +53,7 @@ export const useMailStore = create<MailState>((set) => ({
     }
   },
 
-  syncEmails: async (limit = 50) => {
+  syncEmails: async (limit = 1000) => {
     try {
       const res = await apiRequest<any>('/api/v1/mailbox/sync', { method: 'POST', body: JSON.stringify({ limit }) });
       const errors = Array.isArray(res?.errors) ? res.errors.filter(Boolean) : [];
