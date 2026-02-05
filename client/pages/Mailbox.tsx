@@ -260,6 +260,52 @@ const Mailbox: React.FC = () => {
             <div className="w-56 bg-white flex flex-col shrink-0 py-4 pr-2 group">
 
                 <div className="px-3 mb-6">
+                    {/* Account Switcher */}
+                    <div className="mb-4 relative" ref={accountMenuRef}>
+                        <button
+                            onClick={() => setIsAccountMenuOpen(!isAccountMenuOpen)}
+                            className="w-full flex items-center justify-between px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">
+                                    {currentAccount ? (currentAccount.username || currentAccount.email).charAt(0).toUpperCase() : 'A'}
+                                </div>
+                                <div className="flex flex-col items-start overflow-hidden">
+                                    <span className="text-sm font-bold truncate max-w-[120px]">{currentAccount ? (currentAccount.username || currentAccount.email) : 'All Inboxes'}</span>
+                                    <span className="text-xs text-gray-500 truncate max-w-[120px]">{currentAccount ? currentAccount.email : 'All Accounts'}</span>
+                                </div>
+                            </div>
+                            <ChevronDown size={16} className={`text-gray-500 transition-transform ${isAccountMenuOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {isAccountMenuOpen && (
+                            <div className="absolute top-full left-0 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
+                                <button
+                                    onClick={() => { setSelectedAccountId('all'); setIsAccountMenuOpen(false); }}
+                                    className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left ${selectedAccountId === 'all' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}`}
+                                >
+                                    <div className="w-8 h-8 rounded-full bg-slate-500 flex items-center justify-center text-white font-bold">A</div>
+                                    <span className="font-medium">All Inboxes</span>
+                                </button>
+                                {emailAccounts.map(acc => (
+                                    <button
+                                        key={acc.id}
+                                        onClick={() => { setSelectedAccountId(acc.id); setIsAccountMenuOpen(false); }}
+                                        className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left ${selectedAccountId === acc.id ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}`}
+                                    >
+                                        <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">
+                                            {(acc.username || acc.email).charAt(0).toUpperCase()}
+                                        </div>
+                                        <div className="flex flex-col overflow-hidden">
+                                            <span className="font-medium truncate">{acc.username || acc.email}</span>
+                                            <span className="text-xs text-gray-500 truncate">{acc.email}</span>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
                     <button className="flex items-center gap-3 px-6 py-4 bg-[#c2e7ff] text-[#001d35] font-semibold rounded-2xl hover:shadow-md transition-shadow">
                         <Plus size={24} />
                         <span>Compose</span>
@@ -407,8 +453,8 @@ const Mailbox: React.FC = () => {
                                             `}
                                         >
                                             {/* Checkbox & Star */}
-                                            <td className="w-12 py-3 pl-4 align-top border-b border-gray-100">
-                                                <div className="flex items-center gap-3">
+                                            <td className="w-16 py-3 pl-4 pr-2 align-top border-b border-gray-100">
+                                                <div className="flex items-center gap-5">
                                                     <input type="checkbox" className="w-4 h-4 border-gray-300 rounded focus:ring-0 cursor-pointer" onClick={(e) => e.stopPropagation()} />
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); toggleStar(email.id); }}
