@@ -72,28 +72,50 @@ export const useMailStore = create<MailState>((set) => ({
 
   sendEmail: (to, subject, body) => set((state) => ({
     emails: [{
-        id: 'sent-' + Math.random().toString(36).substr(2, 9),
-        from: 'me@matlance.com',
-        fromName: 'Me',
-        to,
-        subject,
-        body,
-        timestamp: new Date().toISOString(),
-        isRead: true,
-        isStarred: false
+      id: 'sent-' + Math.random().toString(36).substr(2, 9),
+      from: 'me@matlance.com',
+      fromName: 'Me',
+      to,
+      subject,
+      body,
+      timestamp: new Date().toISOString(),
+      isRead: true,
+      isStarred: false
     }, ...state.emails]
   })),
 
-  markAsRead: (id) => set((state) => ({
-    emails: state.emails.map(e => e.id === id ? { ...e, isRead: true } : e)
-  })),
+  markAsRead: async (id) => {
+    // Optimistic update
+    set((state) => ({
+      emails: state.emails.map(e => e.id === id ? { ...e, isRead: true } : e)
+    }));
+    await apiRequest(`/api/v1/mailbox/messages/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isRead: true })
+    });
+  },
 
-  toggleStar: (id) => set((state) => ({
-    emails: state.emails.map(e => e.id === id ? { ...e, isStarred: !e.isStarred } : e)
-  })),
+  toggleStar: async (id) => {
+    const email = get().emails.find(e => e.id === id);
+    if (!email) return;
+    const newVal = !email.isStarred;
 
-  deleteEmail: (id) => set((state) => ({
-    emails: state.emails.filter(e => e.id !== id)
-  })),
+    set((state) => ({
+      emails: state.emails.map(e => e.id === id ? { ...e, isStarred: newVal } : e)
+    }));
+    await apiRequest(`/api/v1/mailbox/messages/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isStarred: newVal })
+    });
+  },
+
+  deleteEmail: async (id) => {
+    set((state) => ({
+      emails: state.emails.filter(e => e.id !== id)
+    }));
+    // Note: If you want persistent delete, you'd add an API call here too. 
+    // Assuming clearMailbox is global, but usually we need deleteMessage(id). 
+    // Controller currently doesn't have deleteSingleMessage, so we leave it local or add it later.
+  },
 
 }));

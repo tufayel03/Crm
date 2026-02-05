@@ -32,3 +32,19 @@ exports.clearMessages = async (req, res) => {
   await MailMessage.deleteMany({});
   res.json({ message: 'Mailbox cleared' });
 };
+
+exports.updateMessage = async (req, res) => {
+  const { id } = req.params;
+  const updates = req.body || {};
+
+  // Whitelist updates
+  const validUpdates = {};
+  if (updates.isRead !== undefined) validUpdates.isRead = updates.isRead;
+  if (updates.isStarred !== undefined) validUpdates.isStarred = updates.isStarred;
+  if (updates.folder !== undefined) validUpdates.folder = updates.folder;
+
+  const msg = await MailMessage.findOneAndUpdate({ _id: id }, { $set: validUpdates }, { new: true });
+  if (!msg) return res.status(404).json({ message: 'Message not found' });
+
+  res.json(msg);
+};

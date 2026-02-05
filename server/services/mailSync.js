@@ -79,7 +79,7 @@ const fetchMessagesForAccount = async (account, limit = 50) => {
     if (lastError) throw lastError;
     throw err;
   } finally {
-    await client.logout().catch(() => {});
+    await client.logout().catch(() => { });
   }
 
   return results;
@@ -89,7 +89,44 @@ const syncAccount = async (account, limit = 50) => {
   const messages = await fetchMessagesForAccount(account, limit);
   if (messages.length === 0) return 0;
 
+  // Import models inside the function or top level to ensure they are available
+  // (Already imported at top)
+  const Lead = require('../models/Lead');
+  const Client = require('../models/Client');
+
   for (const msg of messages) {
+    // Determine Folder Logic
+    let folder = 'General';
+    const email = msg.from.toLowerCase();
+
+    // 1. Check Clients
+    const client = await Client.findOne({ email: { $regex: new RegExp(`^${email}$`, 'i') } });
+    if (client) {
+      folder = 'Clients';
+    } else {
+      // 2. Check Leads
+      const lead = await Lead.findOne({ email: { $regex: new RegExp(`^${email}$`, 'i') } });
+      if (lead) {
+        if (lead.status === 'Contacted') {
+          folder = 'Contacted';
+        } else if (lead.status === 'New') {
+          folder = 'New';
+        } else {
+          // If lead exists but status is other, maybe default to General or keep status name?
+          // User requirement: "if email has new satus then it goes to new folder"
+          // "if ... contacted status then it goes to contacted folder"
+          // "other all email goes to general" -> potentially implies other statuses go to General?
+          // But usually we want to group by status. For now, let's respect the explicit rules.
+          folder = 'General';
+          // Optional: You could use lead.status if you want dynamic folders for all statuses
+          // folder = lead.status;
+        }
+      }
+    }
+
+    // Update the message object with the determined folder
+    msg.folder = folder;
+
     await MailMessage.updateOne(
       { accountId: msg.accountId, imapUid: msg.imapUid },
       { $set: msg },
