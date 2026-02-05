@@ -1,0 +1,35 @@
+/* Global form control styling */
+select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-color: #ffffff;
+  border: 1px solid #E2E8F0;
+  border-radius: 0.75rem;
+  padding: 0.5rem 2.25rem 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #0F172A;
+  line-height: 1.25rem;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 20 20' fill='none'><path d='M6 8l4 4 4-4' stroke='%2394A3B8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 0.75rem;
+}
+
+select:focus {
+  outline: none;
+  border-color: #7DD181;
+  box-shadow: 0 0 0 2px rgba(125, 209, 129, 0.35);
+}
+
+select:disabled {
+  background-color: #F8FAFC;
+  color: #94A3B8;
+  cursor: not-allowed;
+}
+
+select[multiple] {
+  background-image: none;
+  padding-right: 0.75rem;
+}

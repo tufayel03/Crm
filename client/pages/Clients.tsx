@@ -83,6 +83,7 @@ const Clients: React.FC = () => {
       const matchesSearch = 
         (c.companyName && String(c.companyName).toLowerCase().includes(term)) || 
         (c.contactName && String(c.contactName).toLowerCase().includes(term)) ||
+        (c.profession && String(c.profession).toLowerCase().includes(term)) ||
         (c.email && String(c.email).toLowerCase().includes(term)) ||
         (c.uniqueId && String(c.uniqueId).toLowerCase().includes(term));
 
@@ -226,18 +227,33 @@ const Clients: React.FC = () => {
         ? clients.filter(c => selectedIds.includes(c.id)) 
         : filteredClients;
 
-    const exportData = clientsToExport.map(c => ({
+    const exportData = clientsToExport.map(c => {
+      const notesText = (c.notes || [])
+        .map(n => {
+          const ts = n.timestamp ? new Date(n.timestamp).toLocaleString() : '';
+          const author = n.author ? String(n.author) : '';
+          const content = n.content ? String(n.content) : '';
+          const prefix = [ts, author].filter(Boolean).join(' - ');
+          return prefix ? `${prefix}: ${content}` : content;
+        })
+        .filter(Boolean)
+        .join('\n');
+
+      return ({
       'Unique ID': c.uniqueId,
       ShopName: c.companyName,
       Contact: c.contactName,
+      Profession: c.profession || '',
       Email: c.email,
       Phone: c.phone,
       Country: c.country,
       AccountManager: c.accountManagerName,
       Onboarded: new Date(c.onboardedAt).toLocaleDateString(),
       ActiveServices: c.services.filter(s => s.status === 'Active').length,
-      TotalValue: c.services.reduce((acc, s) => acc + s.price, 0)
-    }));
+      TotalValue: c.services.reduce((acc, s) => acc + s.price, 0),
+      Notes: notesText
+    });
+    });
 
     const wb = createWorkbookFromJson("Clients List", exportData);
     await downloadWorkbook(wb, `Matlance_Clients_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
@@ -325,6 +341,7 @@ const Clients: React.FC = () => {
                     if (k === 'unique id' || k === 'short id' || k === 'id') newRow.uniqueId = row[key];
                     else if (k.includes('shop name') || k.includes('company')) newRow.companyName = row[key];
                     else if (k.includes('contact') || k === 'name') newRow.contactName = row[key];
+                    else if (k.includes('profession') || k.includes('job title') || k.includes('job')) newRow.profession = row[key];
                     else if (k.includes('email')) newRow.email = row[key];
                     else if (k.includes('phone') || k.includes('mobile')) newRow.phone = row[key];
                     else if (k.includes('country') || k.includes('location')) newRow.country = row[key];

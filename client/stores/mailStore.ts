@@ -156,8 +156,13 @@ export const useMailStore = create<MailState>((set, get) => ({
   },
 
   deleteForever: async (id) => {
-    set((state) => ({ emails: state.emails.filter(e => e.id !== id) }));
-    await apiRequest(`/api/v1/mailbox/messages/${id}`, { method: 'DELETE' });
+    set((state) => ({
+      emails: state.emails.filter(e => e.id !== id)
+    }));
+    await apiRequest(`/api/v1/mailbox/messages/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ folder: 'DELETED' })
+    });
   },
 
 }));

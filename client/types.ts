@@ -29,6 +29,7 @@ export interface Lead {
   readableId: number;
   shortId: string;
   name: string;
+  profession?: string;
   status: LeadStatus;
   email: string;
   phone: string;
@@ -59,6 +60,7 @@ export interface Client {
   leadId: string;
   companyName: string;
   contactName: string;
+  profession?: string;
   email: string;
   phone: string;
   country: string;

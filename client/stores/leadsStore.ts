@@ -1,5 +1,6 @@
 ﻿import { create } from 'zustand';
 import { Lead, LeadStatus } from '../types';
+import { useClientsStore } from './clientsStore';
 import { apiRequest } from '../utils/api';
 
 interface LeadsState {
@@ -13,6 +14,8 @@ interface LeadsState {
   updateStatus: (leadId: string, status: LeadStatus) => Promise<void>;
   updateAgent: (leadId: string, agentId: string, agentName: string) => Promise<void>;
   addNote: (leadId: string, content: string, author: string) => Promise<void>;
+  updateNote: (leadId: string, noteId: string, content: string, author?: string) => Promise<void>;
+  deleteNote: (leadId: string, noteId: string) => Promise<void>;
   revealContact: (leadId: string) => Promise<void>;
   setLeads: (leads: Lead[]) => void;
   bulkDelete: (ids: string[]) => Promise<void>;
@@ -60,6 +63,10 @@ export const useLeadsStore = create<LeadsState>((set, get) => ({
       body: JSON.stringify(updates)
     });
     set((state) => ({ leads: state.leads.map(l => l.id === id ? updated : l) }));
+    if (updates.status && ['Converted', 'Closed Won'].includes(updates.status)) {
+      const { convertLeadToClient } = useClientsStore.getState();
+      await convertLeadToClient(updated, updated.name);
+    }
   },
 
   updateStatus: async (leadId, status) => {
@@ -74,6 +81,21 @@ export const useLeadsStore = create<LeadsState>((set, get) => ({
     const updated = await apiRequest<Lead>(`/api/v1/leads/${leadId}/notes`, {
       method: 'POST',
       body: JSON.stringify({ content, author })
+    });
+    set((state) => ({ leads: state.leads.map(l => l.id === leadId ? updated : l) }));
+  },
+
+  updateNote: async (leadId, noteId, content, author) => {
+    const updated = await apiRequest<Lead>(`/api/v1/leads/${leadId}/notes/${noteId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ content, author })
+    });
+    set((state) => ({ leads: state.leads.map(l => l.id === leadId ? updated : l) }));
+  },
+
+  deleteNote: async (leadId, noteId) => {
+    const updated = await apiRequest<Lead>(`/api/v1/leads/${leadId}/notes/${noteId}`, {
+      method: 'DELETE'
     });
     set((state) => ({ leads: state.leads.map(l => l.id === leadId ? updated : l) }));
   },

@@ -13,6 +13,8 @@ const {
   updateService,
   removeService,
   addNote,
+  updateNote,
+  deleteNote,
   addDocument,
   uploadDocument,
   removeDocument,
@@ -42,6 +44,8 @@ router.patch('/:id/services', asyncHandler(updateService));
 router.delete('/:id/services', asyncHandler(removeService));
 
 router.post('/:id/notes', asyncHandler(addNote));
+router.patch('/:id/notes/:noteId', asyncHandler(updateNote));
+router.delete('/:id/notes/:noteId', asyncHandler(deleteNote));
 router.post('/:id/documents', asyncHandler(addDocument));
 router.post('/:id/upload', upload.single('file'), asyncHandler(uploadDocument));
 router.delete('/:id/documents', asyncHandler(removeDocument));

@@ -11,6 +11,7 @@ const LeadSchema = new mongoose.Schema({
   readableId: { type: Number, unique: true }, // Ideally handled by a counter collection
   shortId: { type: String, required: true, unique: true },
   name: { type: String, required: true },
+  profession: { type: String },
   email: { type: String },
   phone: { type: String },
   country: { type: String },

@@ -50,6 +50,7 @@ const ClientsTable: React.FC<ClientsTableProps> = ({
               <th className="px-6 py-4 text-xs font-bold text-textMuted uppercase tracking-wider">Unique ID</th>
               <th className="px-6 py-4 text-xs font-bold text-textMuted uppercase tracking-wider">Shop Name</th>
               <th className="px-6 py-4 text-xs font-bold text-textMuted uppercase tracking-wider">Contact Person</th>
+              <th className="px-6 py-4 text-xs font-bold text-textMuted uppercase tracking-wider">Profession</th>
               <th className="px-6 py-4 text-xs font-bold text-textMuted uppercase tracking-wider">Active Services</th>
               <th className="px-6 py-4 text-xs font-bold text-textMuted uppercase tracking-wider">Account Manager</th>
               <th className="px-6 py-4 text-xs font-bold text-textMuted uppercase tracking-wider">Onboarded</th>
@@ -59,7 +60,7 @@ const ClientsTable: React.FC<ClientsTableProps> = ({
           <tbody className="divide-y divide-border">
             {clients.length === 0 ? (
                <tr>
-              <td colSpan={9} className="px-6 py-12 text-center text-textMuted">
+              <td colSpan={10} className="px-6 py-12 text-center text-textMuted">
                    No clients found matching your filters.
                  </td>
                </tr>
@@ -109,8 +110,18 @@ const ClientsTable: React.FC<ClientsTableProps> = ({
                         >
                           <Mail size={10} /> {client.email}
                         </p>
+                        <p
+                            className="text-[10px] text-textMuted cursor-copy select-none"
+                            onDoubleClick={(e) => handleCopy(e, client.phone)}
+                            title="Double click to copy phone"
+                        >
+                          {client.phone || ''}
+                        </p>
                       </div>
                     </div>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-textSecondary">
+                    {client.profession || '—'}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex flex-wrap gap-1">

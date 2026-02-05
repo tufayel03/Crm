@@ -11,7 +11,9 @@ const {
   revealContact,
   bulkAssign,
   bulkStatusUpdate,
-  importLeads
+  importLeads,
+  updateNote,
+  deleteNote
 } = require('../controllers/leadController');
 
 router.use(protect);
@@ -29,6 +31,8 @@ router.route('/:id')
   .patch(asyncHandler(updateLead));
 
 router.post('/:id/notes', asyncHandler(addNote));
+router.patch('/:id/notes/:noteId', asyncHandler(updateNote));
+router.delete('/:id/notes/:noteId', asyncHandler(deleteNote));
 router.post('/:id/reveal', asyncHandler(revealContact));
 
 module.exports = router;

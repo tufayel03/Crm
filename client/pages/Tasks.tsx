@@ -23,6 +23,11 @@ const Tasks: React.FC = () => {
   const { addNotification } = useNotificationStore();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCompleteModalOpen, setIsCompleteModalOpen] = useState(false);
+  const [taskToComplete, setTaskToComplete] = useState<string | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
+  const [isDeleteCompletedModalOpen, setIsDeleteCompletedModalOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'completed'>('pending');
   const [search, setSearch] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -73,13 +78,21 @@ const Tasks: React.FC = () => {
 
   const handleDeleteCompleted = async () => {
     if (visibleCompletedIds.length === 0) return;
-    if (!window.confirm(`Delete ${visibleCompletedIds.length} completed task(s)? This cannot be undone.`)) return;
+    setIsDeleteCompletedModalOpen(true);
+  };
+
+  const confirmDeleteCompleted = async () => {
     const deletedIds = await deleteCompletedTasks();
     if (deletedIds.length > 0) {
       addNotification('success', `Deleted ${deletedIds.length} completed task(s).`);
     } else {
       addNotification('info', 'No completed tasks to delete.');
     }
+    setIsDeleteCompletedModalOpen(false);
+  };
+
+  const cancelDeleteCompleted = () => {
+    setIsDeleteCompletedModalOpen(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -126,9 +139,37 @@ const Tasks: React.FC = () => {
   };
 
   const handleDelete = (id: string) => {
-    if(window.confirm("Are you sure you want to permanently delete this task?")) {
-        deleteTask(id);
-    }
+    setTaskToDelete(id);
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!taskToDelete) return;
+    await deleteTask(taskToDelete);
+    setTaskToDelete(null);
+    setIsDeleteModalOpen(false);
+  };
+
+  const cancelDelete = () => {
+    setTaskToDelete(null);
+    setIsDeleteModalOpen(false);
+  };
+
+  const handleComplete = (id: string) => {
+    setTaskToComplete(id);
+    setIsCompleteModalOpen(true);
+  };
+
+  const confirmComplete = async () => {
+    if (!taskToComplete) return;
+    await completeTask(taskToComplete);
+    setTaskToComplete(null);
+    setIsCompleteModalOpen(false);
+  };
+
+  const cancelComplete = () => {
+    setTaskToComplete(null);
+    setIsCompleteModalOpen(false);
   };
 
   const getPriorityColor = (p: string) => {
@@ -219,7 +260,7 @@ const Tasks: React.FC = () => {
                     )}
                     {task.status === 'pending' ? (
                     <button 
-                        onClick={() => completeTask(task.id)}
+                        onClick={() => handleComplete(task.id)}
                         className="text-textMuted hover:text-success transition-colors p-1"
                         title="Mark Complete"
                     >
@@ -270,6 +311,96 @@ const Tasks: React.FC = () => {
           ))
         )}
       </div>
+
+      {isCompleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center gap-3 mb-4 text-success">
+              <div className="p-2 bg-green-100 rounded-full">
+                <CheckCircle2 size={24} />
+              </div>
+              <h3 className="font-bold text-lg text-textPrimary">Mark as Completed?</h3>
+            </div>
+            <p className="text-sm text-textSecondary mb-6 leading-relaxed">
+              This will move the task to completed.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={cancelComplete}
+                className="flex-1 py-2 border border-border rounded-xl font-bold text-textSecondary hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmComplete}
+                className="flex-1 py-2 bg-success text-white rounded-xl font-bold hover:bg-success/90 transition-colors shadow-lg shadow-green-100"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center gap-3 mb-4 text-danger">
+              <div className="p-2 bg-red-100 rounded-full">
+                <Trash2 size={24} />
+              </div>
+              <h3 className="font-bold text-lg text-textPrimary">Delete Task?</h3>
+            </div>
+            <p className="text-sm text-textSecondary mb-6 leading-relaxed">
+              This will permanently remove the task.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={cancelDelete}
+                className="flex-1 py-2 border border-border rounded-xl font-bold text-textSecondary hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="flex-1 py-2 bg-danger text-white rounded-xl font-bold hover:bg-red-600 transition-colors shadow-lg shadow-red-100"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isDeleteCompletedModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center gap-3 mb-4 text-danger">
+              <div className="p-2 bg-red-100 rounded-full">
+                <Trash2 size={24} />
+              </div>
+              <h3 className="font-bold text-lg text-textPrimary">Delete Completed Tasks?</h3>
+            </div>
+            <p className="text-sm text-textSecondary mb-6 leading-relaxed">
+              This will permanently remove {visibleCompletedIds.length} completed task(s).
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={cancelDeleteCompleted}
+                className="flex-1 py-2 border border-border rounded-xl font-bold text-textSecondary hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteCompleted}
+                className="flex-1 py-2 bg-danger text-white rounded-xl font-bold hover:bg-red-600 transition-colors shadow-lg shadow-red-100"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">

@@ -1,6 +1,38 @@
 ﻿const Lead = require('../models/Lead');
+const Client = require('../models/Client');
 const { getNextSequence } = require('../utils/counter');
 const { generateUniqueShortId } = require('../utils/ids');
+
+const CONVERTED_STATUSES = ['Converted', 'Closed Won'];
+
+const ensureClientForLead = async (lead) => {
+  if (!lead) return;
+  const existing = await Client.findOne({ $or: [{ leadId: lead._id }, lead.email ? { email: lead.email } : null].filter(Boolean) });
+  if (existing) return;
+
+  const readableId = await getNextSequence('client');
+  const uniqueId = lead.shortId || await generateUniqueShortId(Client, 'uniqueId');
+
+  await Client.create({
+    readableId,
+    uniqueId,
+    leadId: lead._id,
+    companyName: lead.name,
+    contactName: lead.name,
+    profession: lead.profession || '',
+    email: lead.email,
+    phone: lead.phone,
+    country: lead.country,
+    accountManagerId: lead.assignedAgentId,
+    accountManagerName: lead.assignedAgentName,
+    services: [],
+    onboardedAt: new Date(),
+    walletBalance: 0,
+    invoices: [],
+    documents: [],
+    notes: lead.notes || []
+  });
+};
 
 exports.getLeads = async (req, res) => {
   const filter = {};
@@ -12,7 +44,7 @@ exports.getLeads = async (req, res) => {
 };
 
 exports.createLead = async (req, res) => {
-  const { name, email, phone, country, assignedAgentId, assignedAgentName, status, source } = req.body;
+  const { name, profession, email, phone, country, assignedAgentId, assignedAgentName, status, source } = req.body;
   if (!name) return res.status(400).json({ message: 'Name is required' });
 
   const or = [];
@@ -30,6 +62,7 @@ exports.createLead = async (req, res) => {
     readableId,
     shortId,
     name,
+    profession: profession || '',
     email,
     phone,
     country,
@@ -46,6 +79,9 @@ exports.createLead = async (req, res) => {
 exports.updateLead = async (req, res) => {
   const lead = await Lead.findByIdAndUpdate(req.params.id, req.body, { new: true });
   if (!lead) return res.status(404).json({ message: 'Lead not found' });
+  if (req.body && req.body.status && CONVERTED_STATUSES.includes(req.body.status)) {
+    await ensureClientForLead(lead);
+  }
   res.json(lead);
 };
 
@@ -69,6 +105,27 @@ exports.addNote = async (req, res) => {
   res.json(lead);
 };
 
+exports.updateNote = async (req, res) => {
+  const { content, author } = req.body;
+  const lead = await Lead.findById(req.params.id);
+  if (!lead) return res.status(404).json({ message: 'Lead not found' });
+  const note = (lead.notes || []).find(n => n.id === req.params.noteId);
+  if (!note) return res.status(404).json({ message: 'Note not found' });
+  note.content = content;
+  if (author) note.author = author;
+  note.timestamp = new Date();
+  await lead.save();
+  res.json(lead);
+};
+
+exports.deleteNote = async (req, res) => {
+  const lead = await Lead.findById(req.params.id);
+  if (!lead) return res.status(404).json({ message: 'Lead not found' });
+  lead.notes = (lead.notes || []).filter(n => n.id !== req.params.noteId);
+  await lead.save();
+  res.json(lead);
+};
+
 exports.revealContact = async (req, res) => {
   const lead = await Lead.findByIdAndUpdate(req.params.id, { isRevealed: true }, { new: true });
   if (!lead) return res.status(404).json({ message: 'Lead not found' });
@@ -84,6 +141,12 @@ exports.bulkAssign = async (req, res) => {
 exports.bulkStatusUpdate = async (req, res) => {
   const { ids, status } = req.body;
   await Lead.updateMany({ _id: { $in: ids } }, { status });
+  if (CONVERTED_STATUSES.includes(status)) {
+    const leads = await Lead.find({ _id: { $in: ids } });
+    for (const lead of leads) {
+      await ensureClientForLead(lead);
+    }
+  }
   res.json({ message: 'Leads updated' });
 };
 
@@ -118,6 +181,7 @@ exports.importLeads = async (req, res) => {
       readableId,
       shortId,
       name: data.name || 'Unknown',
+      profession: data.profession || data.jobTitle || '',
       email: data.email || '',
       phone: data.phone || '',
       country: data.country || '',

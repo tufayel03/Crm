@@ -36,7 +36,9 @@ import {
   Copy,
   Trash2,
   Hash,
-  MapPin
+  MapPin,
+  Briefcase,
+  Check
 } from 'lucide-react';
 
 const ClientDetail: React.FC = () => {
@@ -46,6 +48,7 @@ const ClientDetail: React.FC = () => {
     clients, payments, updateClient,
     removeClientDocument, uploadClientDocument,
     addClientService, updateSubscription, removeClientService, addClientNote, 
+    updateClientNote, deleteClientNote,
     addPayment, updatePaymentStatus, updatePayment, deletePayment
   } = useClientsStore();
   const { plans } = useServicesStore();
@@ -60,6 +63,8 @@ const ClientDetail: React.FC = () => {
 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [newNote, setNewNote] = useState('');
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteContent, setEditingNoteContent] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
@@ -145,6 +150,27 @@ const ClientDetail: React.FC = () => {
     if (!newNote.trim()) return;
     addClientNote(client.id, newNote, user?.name || 'Unknown');
     setNewNote('');
+  };
+
+  const startEditNote = (note: { id: string; content: string }) => {
+    setEditingNoteId(note.id);
+    setEditingNoteContent(note.content || '');
+  };
+
+  const cancelEditNote = () => {
+    setEditingNoteId(null);
+    setEditingNoteContent('');
+  };
+
+  const handleUpdateNote = async (noteId: string) => {
+    if (!editingNoteContent.trim()) return;
+    await updateClientNote(client.id, noteId, editingNoteContent.trim(), user?.name || 'Unknown');
+    cancelEditNote();
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    if (!window.confirm('Delete this note?')) return;
+    await deleteClientNote(client.id, noteId);
   };
 
   const handleSaveService = (serviceData: any) => {
@@ -385,6 +411,10 @@ const ClientDetail: React.FC = () => {
                     <div className="flex items-center gap-3 text-textSecondary">
                         <Mail size={18} className="text-textMuted" />
                         <span className="text-sm">{client.email || 'No email'}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-textSecondary">
+                        <Briefcase size={18} className="text-textMuted" />
+                        <span className="text-sm">{client.profession || '—'}</span>
                     </div>
                     <div className="flex items-center gap-3 text-textSecondary">
                         <Phone size={18} className="text-textMuted" />
@@ -727,11 +757,54 @@ const ClientDetail: React.FC = () => {
                         <div className="bg-appBg p-4 rounded-xl border border-border/50">
                         <div className="flex justify-between items-start mb-2">
                             <span className="text-sm font-bold text-textPrimary">{note.author}</span>
-                            <span className="text-[10px] font-medium text-textMuted uppercase">{new Date(note.timestamp).toLocaleDateString()}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-medium text-textMuted uppercase">{new Date(note.timestamp).toLocaleDateString()}</span>
+                              <button
+                                onClick={() => startEditNote(note)}
+                                className="p-1 text-textMuted hover:text-primary transition-colors"
+                                title="Edit note"
+                              >
+                                <Edit2 size={14} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteNote(note.id)}
+                                className="p-1 text-textMuted hover:text-danger transition-colors"
+                                title="Delete note"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
                         </div>
-                        <p className="text-sm text-textSecondary whitespace-pre-line leading-relaxed">
-                            {note.content}
-                        </p>
+                        {editingNoteId === note.id ? (
+                          <div className="space-y-3">
+                            <textarea
+                              value={editingNoteContent}
+                              onChange={(e) => setEditingNoteContent(e.target.value)}
+                              className="w-full p-3 bg-white border border-border rounded-lg text-sm focus:ring-2 focus:ring-primary outline-none"
+                              rows={3}
+                            />
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={cancelEditNote}
+                                className="px-3 py-1.5 text-xs font-bold text-textSecondary border border-border rounded-lg hover:bg-slate-50"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateNote(note.id)}
+                                className="px-3 py-1.5 text-xs font-bold text-white bg-darkGreen rounded-lg hover:bg-opacity-90 flex items-center gap-1"
+                              >
+                                <Check size={12} /> Save
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-textSecondary whitespace-pre-line leading-relaxed">
+                              {note.content}
+                          </p>
+                        )}
                         </div>
                     </div>
                     ))

@@ -21,7 +21,7 @@ exports.getClients = async (req, res) => {
 };
 
 exports.createClient = async (req, res) => {
-  const { companyName, contactName, email, leadId } = req.body;
+  const { companyName, contactName, profession, email, leadId } = req.body;
   if (!contactName) return res.status(400).json({ message: 'Contact name is required' });
 
   if (email) {
@@ -37,6 +37,7 @@ exports.createClient = async (req, res) => {
 
   const client = await Client.create({
     ...payload,
+    profession: profession || payload.profession || '',
     readableId,
     uniqueId,
     walletBalance: req.body.walletBalance || 0
@@ -88,6 +89,8 @@ exports.convertLeadToClient = async (req, res) => {
   const { leadId, companyName } = req.body;
   const lead = await Lead.findById(leadId);
   if (!lead) return res.status(404).json({ message: 'Lead not found' });
+  const existing = await Client.findOne({ $or: [{ leadId: lead._id }, lead.email ? { email: lead.email } : null].filter(Boolean) });
+  if (existing) return res.status(200).json(existing);
 
   const readableId = await getNextSequence('client');
   const uniqueId = lead.shortId || await generateUniqueShortId(Client, 'uniqueId');
@@ -98,6 +101,7 @@ exports.convertLeadToClient = async (req, res) => {
     leadId: lead._id,
     companyName: companyName || lead.name,
     contactName: lead.name,
+    profession: lead.profession || '',
     email: lead.email,
     phone: lead.phone,
     country: lead.country,
@@ -149,6 +153,27 @@ exports.addNote = async (req, res) => {
   const client = await Client.findById(req.params.id);
   if (!client) return res.status(404).json({ message: 'Client not found' });
   client.notes.push({ id: Math.random().toString(36).substring(2, 9), content, author, timestamp: new Date() });
+  await client.save();
+  res.json(client);
+};
+
+exports.updateNote = async (req, res) => {
+  const { content, author } = req.body;
+  const client = await Client.findById(req.params.id);
+  if (!client) return res.status(404).json({ message: 'Client not found' });
+  const note = (client.notes || []).find(n => n.id === req.params.noteId);
+  if (!note) return res.status(404).json({ message: 'Note not found' });
+  note.content = content;
+  if (author) note.author = author;
+  note.timestamp = new Date();
+  await client.save();
+  res.json(client);
+};
+
+exports.deleteNote = async (req, res) => {
+  const client = await Client.findById(req.params.id);
+  if (!client) return res.status(404).json({ message: 'Client not found' });
+  client.notes = (client.notes || []).filter(n => n.id !== req.params.noteId);
   await client.save();
   res.json(client);
 };
@@ -291,6 +316,7 @@ exports.importClients = async (req, res) => {
       leadId: '',
       companyName: data.companyName || data.shopName || '',
       contactName: data.contactName || data.name || 'Unknown',
+      profession: data.profession || data.jobTitle || '',
       email: data.email || '',
       phone: data.phone || '',
       country: data.country || '',

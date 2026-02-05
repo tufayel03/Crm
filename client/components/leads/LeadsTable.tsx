@@ -184,6 +184,7 @@ const LeadsTable: React.FC<LeadsTableProps> = ({
               </th>
               <th className="px-4 py-4 text-xs font-bold text-textMuted uppercase tracking-wider">ID</th>
               <th className="px-4 py-4 text-xs font-bold text-textMuted uppercase tracking-wider">Lead Info</th>
+              <th className="px-4 py-4 text-xs font-bold text-textMuted uppercase tracking-wider">Profession</th>
               <th className="px-4 py-4 text-xs font-bold text-textMuted uppercase tracking-wider">Status</th>
               <th className="px-4 py-4 text-xs font-bold text-textMuted uppercase tracking-wider">Contact</th>
               <th className="px-4 py-4 text-xs font-bold text-textMuted uppercase tracking-wider">Agent</th>
@@ -220,6 +221,9 @@ const LeadsTable: React.FC<LeadsTableProps> = ({
                     </div>
                   </div>
                 </td>
+                <td className="px-4 py-4 text-sm text-textSecondary pointer-events-none">
+                  {lead.profession || '—'}
+                </td>
                 <td className="px-4 py-4 pointer-events-none">
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${lead.status === 'New' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-success/10 text-success border-success/20'}`}>
                     {lead.status}
@@ -228,7 +232,13 @@ const LeadsTable: React.FC<LeadsTableProps> = ({
                 <td className="px-4 py-4" onDoubleClick={(e) => { e.stopPropagation(); handleCopy(lead.email); }}>
                   <div className="space-y-0.5 cursor-text">
                     <p className="text-xs font-medium text-textSecondary cursor-copy select-none" title="Double click to copy email">{maskValue(lead.email, 'email', lead.isRevealed || isAdmin)}</p>
-                    <p className="text-[10px] text-textMuted">{maskValue(lead.phone, 'phone', lead.isRevealed || isAdmin)}</p>
+                    <p
+                      className="text-[10px] text-textMuted cursor-copy select-none"
+                      title="Double click to copy phone"
+                      onDoubleClick={(e) => { e.stopPropagation(); handleCopy(lead.phone); }}
+                    >
+                      {maskValue(lead.phone, 'phone', lead.isRevealed || isAdmin)}
+                    </p>
                   </div>
                 </td>
                 <td className="px-4 py-4 text-xs font-medium text-textSecondary pointer-events-none">
@@ -268,7 +278,7 @@ const LeadsTable: React.FC<LeadsTableProps> = ({
             ))}
             {leads.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-20 text-center text-textMuted">No leads found.</td>
+                <td colSpan={8} className="py-20 text-center text-textMuted">No leads found.</td>
               </tr>
             )}
           </tbody>

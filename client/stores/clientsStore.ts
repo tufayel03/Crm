@@ -16,6 +16,8 @@ interface ClientsState {
   addClientService: (clientId: string, service: ServiceSubscription) => Promise<void>;
   removeClientService: (clientId: string, serviceId: string) => Promise<void>;
   addClientNote: (clientId: string, content: string, author: string) => Promise<void>;
+  updateClientNote: (clientId: string, noteId: string, content: string, author?: string) => Promise<void>;
+  deleteClientNote: (clientId: string, noteId: string) => Promise<void>;
 
   updateWalletBalance: (clientId: string, amount: number, operation: 'credit' | 'debit' | 'set') => Promise<void>;
 
@@ -115,6 +117,21 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
     const updated = await apiRequest<Client>(`/api/v1/clients/${clientId}/notes`, {
       method: 'POST',
       body: JSON.stringify({ content, author })
+    });
+    set(state => ({ clients: state.clients.map(c => c.id === clientId ? updated : c) }));
+  },
+
+  updateClientNote: async (clientId, noteId, content, author) => {
+    const updated = await apiRequest<Client>(`/api/v1/clients/${clientId}/notes/${noteId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ content, author })
+    });
+    set(state => ({ clients: state.clients.map(c => c.id === clientId ? updated : c) }));
+  },
+
+  deleteClientNote: async (clientId, noteId) => {
+    const updated = await apiRequest<Client>(`/api/v1/clients/${clientId}/notes/${noteId}`, {
+      method: 'DELETE'
     });
     set(state => ({ clients: state.clients.map(c => c.id === clientId ? updated : c) }));
   },

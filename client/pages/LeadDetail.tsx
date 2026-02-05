@@ -26,14 +26,17 @@ import {
   Hash,
   Tag,
   X,
-  Loader2
+  Loader2,
+  Edit2,
+  Trash2,
+  Check
 } from 'lucide-react';
 import { LeadStatus } from '../types';
 
 const LeadDetail: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { leads, updateStatus, updateAgent, addNote, revealContact, statuses, outcomes } = useLeadsStore();
+  const { leads, updateStatus, updateAgent, addNote, updateNote, deleteNote, revealContact, statuses, outcomes } = useLeadsStore();
   const { user, role } = useAuthStore();
   const { createTask } = useTasksStore();
   const { convertLeadToClient, clients } = useClientsStore();
@@ -44,6 +47,8 @@ const LeadDetail: React.FC = () => {
   const lead = leads.find(l => l.id === id);
   const isAlreadyClient = clients.some(c => c.leadId === id);
   const [newNote, setNewNote] = useState('');
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteContent, setEditingNoteContent] = useState('');
   const [outcome, setOutcome] = useState('');
   const [followUpDate, setFollowUpDate] = useState('');
 
@@ -85,6 +90,27 @@ const LeadDetail: React.FC = () => {
     if (!newNote) return;
     addNote(lead.id, newNote, user?.name || 'Unknown');
     setNewNote('');
+  };
+
+  const startEditNote = (note: { id: string; content: string }) => {
+    setEditingNoteId(note.id);
+    setEditingNoteContent(note.content || '');
+  };
+
+  const cancelEditNote = () => {
+    setEditingNoteId(null);
+    setEditingNoteContent('');
+  };
+
+  const handleUpdateNote = async (noteId: string) => {
+    if (!editingNoteContent.trim()) return;
+    await updateNote(lead.id, noteId, editingNoteContent.trim(), user?.name || 'Unknown');
+    cancelEditNote();
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    if (!window.confirm('Delete this note?')) return;
+    await deleteNote(lead.id, noteId);
   };
 
   const handleLogCall = () => {
@@ -376,11 +402,54 @@ const LeadDetail: React.FC = () => {
                     <div className="bg-appBg p-4 rounded-xl border border-border/50">
                       <div className="flex justify-between items-start mb-2">
                         <span className="text-sm font-bold text-textPrimary">{note.author}</span>
-                        <span className="text-[10px] font-medium text-textMuted uppercase">{new Date(note.timestamp).toLocaleString()}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-medium text-textMuted uppercase">{new Date(note.timestamp).toLocaleString()}</span>
+                          <button
+                            onClick={() => startEditNote(note)}
+                            className="p-1 text-textMuted hover:text-primary transition-colors"
+                            title="Edit note"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteNote(note.id)}
+                            className="p-1 text-textMuted hover:text-danger transition-colors"
+                            title="Delete note"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </div>
-                      <p className="text-sm text-textSecondary whitespace-pre-line leading-relaxed">
-                        {note.content}
-                      </p>
+                      {editingNoteId === note.id ? (
+                        <div className="space-y-3">
+                          <textarea
+                            value={editingNoteContent}
+                            onChange={(e) => setEditingNoteContent(e.target.value)}
+                            className="w-full p-3 bg-white border border-border rounded-lg text-sm focus:ring-2 focus:ring-primary outline-none"
+                            rows={3}
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={cancelEditNote}
+                              className="px-3 py-1.5 text-xs font-bold text-textSecondary border border-border rounded-lg hover:bg-slate-50"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateNote(note.id)}
+                              className="px-3 py-1.5 text-xs font-bold text-white bg-darkGreen rounded-lg hover:bg-opacity-90 flex items-center gap-1"
+                            >
+                              <Check size={12} /> Save
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-textSecondary whitespace-pre-line leading-relaxed">
+                          {note.content}
+                        </p>
+                      )}
                     </div>
                   </div>
                 ))

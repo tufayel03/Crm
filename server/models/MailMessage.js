@@ -26,7 +26,6 @@ const MailMessageSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 MailMessageSchema.index({ accountId: 1, imapUid: 1 }, { unique: true, sparse: true });
-MailMessageSchema.index({ trackingId: 1 }, { unique: true, sparse: true });
 
 MailMessageSchema.set('toJSON', {
   virtuals: true,

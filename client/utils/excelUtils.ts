@@ -53,12 +53,23 @@ export const downloadWorkbook = async (workbook: ExcelJS.Workbook, filename: str
   window.URL.revokeObjectURL(url);
 };
 
+const makeUniqueHeaders = (rawHeaders: string[]) => {
+  const seen = new Map<string, number>();
+  return rawHeaders.map((header) => {
+    const base = String(header || '').trim();
+    if (!base) return '';
+    const count = seen.get(base) ?? 0;
+    seen.set(base, count + 1);
+    return count === 0 ? base : `${base} (${count + 1})`;
+  }).filter(Boolean);
+};
+
 export const sheetToJson = (sheet: ExcelJS.Worksheet) => {
   const headerRow = sheet.getRow(1);
-  const headers = headerRow.values
+  const rawHeaders = headerRow.values
     .slice(1)
-    .map((h) => String(h || '').trim())
-    .filter(Boolean);
+    .map((h) => String(h || '').trim());
+  const headers = makeUniqueHeaders(rawHeaders);
 
   const rows: Record<string, any>[] = [];
   for (let i = 2; i <= sheet.rowCount; i += 1) {
@@ -126,7 +137,8 @@ export const parseCsvToJson = (csvText: string) => {
 
   if (rows.length === 0) return [];
 
-  const headers = rows[0].map((h) => h.trim()).filter(Boolean);
+  const rawHeaders = rows[0].map((h) => String(h || '').trim());
+  const headers = makeUniqueHeaders(rawHeaders);
   return rows.slice(1).map((r) => {
     const obj: Record<string, any> = {};
     headers.forEach((header, idx) => {

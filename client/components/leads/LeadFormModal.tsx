@@ -14,6 +14,7 @@ interface LeadFormModalProps {
 const LeadFormModal: React.FC<LeadFormModalProps> = ({ initialData, statuses, agents, onClose, onSave }) => {
   const [formData, setFormData] = useState({
     name: '',
+    profession: '',
     email: '',
     phone: '',
     country: '',
@@ -26,6 +27,7 @@ const LeadFormModal: React.FC<LeadFormModalProps> = ({ initialData, statuses, ag
     if (initialData) {
         setFormData({
             name: initialData.name,
+            profession: initialData.profession || '',
             email: initialData.email,
             phone: initialData.phone,
             country: initialData.country,
@@ -118,6 +120,19 @@ const LeadFormModal: React.FC<LeadFormModalProps> = ({ initialData, statuses, ag
                     value={formData.country}
                     onChange={(e) => setFormData({...formData, country: e.target.value})}
                     placeholder="USA"
+                    className="w-full pl-9 pr-3 py-2 bg-white text-textPrimary border border-border rounded-lg text-sm focus:ring-2 focus:ring-primary outline-none"
+                />
+                </div>
+            </div>
+            <div>
+                <label className="block text-xs font-bold text-textSecondary mb-1">Profession</label>
+                <div className="relative">
+                <Briefcase size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-textMuted" />
+                <input 
+                    type="text" 
+                    value={formData.profession}
+                    onChange={(e) => setFormData({...formData, profession: e.target.value})}
+                    placeholder="Accountant"
                     className="w-full pl-9 pr-3 py-2 bg-white text-textPrimary border border-border rounded-lg text-sm focus:ring-2 focus:ring-primary outline-none"
                 />
                 </div>

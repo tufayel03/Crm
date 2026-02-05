@@ -107,10 +107,12 @@ const Leads: React.FC = () => {
     return leads.filter(l => {
       const safeName = String(l.name || '');
       const safeEmail = String(l.email || '');
+      const safeProfession = String(l.profession || '');
       const safeId = l.readableId ? String(l.readableId) : '';
 
       const matchesSearch = safeName.toLowerCase().includes(search.toLowerCase()) || 
                             safeEmail.toLowerCase().includes(search.toLowerCase()) ||
+                            safeProfession.toLowerCase().includes(search.toLowerCase()) ||
                             safeId.includes(search);
       
       const matchesStatus = statusFilter === 'All' || l.status === statusFilter;
@@ -402,16 +404,31 @@ const Leads: React.FC = () => {
       dataToExport = filteredLeads;
     }
 
-    const exportData = dataToExport.map(l => ({
+    const exportData = dataToExport.map(l => {
+      const notesText = (l.notes || [])
+        .map(n => {
+          const ts = n.timestamp ? new Date(n.timestamp).toLocaleString() : '';
+          const author = n.author ? String(n.author) : '';
+          const content = n.content ? String(n.content) : '';
+          const prefix = [ts, author].filter(Boolean).join(' - ');
+          return prefix ? `${prefix}: ${content}` : content;
+        })
+        .filter(Boolean)
+        .join('\n');
+
+      return ({
       ID: l.readableId,
       'Unique ID': l.shortId,
       Name: l.name,
+      Profession: l.profession || '',
       Email: l.email,
       Phone: l.phone,
       Country: l.country,
       Status: l.status,
-      Agent: l.assignedAgentName
-    }));
+      Agent: l.assignedAgentName,
+      Notes: notesText
+    });
+    });
 
     const wb = createWorkbookFromJson("Leads", exportData);
     await downloadWorkbook(wb, `Matlance_Leads_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
@@ -451,22 +468,64 @@ const Leads: React.FC = () => {
           // Smart Column Mapping
           const mappedData = jsonData.map((row: any) => {
               const newRow: any = {};
+              const notesParts: string[] = [];
+
               Object.keys(row).forEach(key => {
-                  const k = key.toLowerCase().trim();
-                  // Capture Unique ID
-                  if (k === 'unique id' || k === 'short id' || k === 'id') newRow.uniqueId = row[key];
-                  else if (k === 'name' || k.includes('full name') || k.includes('contact')) newRow.name = row[key];
-                  else if (k.includes('email')) newRow.email = row[key];
-                  else if (k.includes('phone') || k.includes('mobile')) newRow.phone = row[key];
-                  else if (k.includes('country') || k.includes('region')) newRow.country = row[key];
-                  else if (k === 'status') newRow.status = row[key]; 
-                  else if (k.includes('note') || k.includes('comment') || k.includes('remarks')) newRow.note = row[key];
+                  const rawKey = String(key || '').trim();
+                  const k = rawKey.toLowerCase().trim();
+                  const kBase = k.replace(/\s*\(\d+\)\s*$/, '');
+                  const value = row[key];
+                  const hasValue = value !== '' && value !== null && value !== undefined;
+
+                  // Capture Unique ID (optional)
+                  if (kBase === 'unique id' || kBase === 'short id' || kBase === 'id') {
+                    newRow.uniqueId = value;
+                    return;
+                  }
+                  if (kBase === 'name' || kBase.includes('full name') || kBase.includes('contact')) {
+                    newRow.name = value;
+                    return;
+                  }
+                  if (kBase.includes('profession') || kBase.includes('job title') || kBase.includes('job')) {
+                    newRow.profession = value;
+                    return;
+                  }
+                  if (kBase.includes('email')) {
+                    newRow.email = value;
+                    return;
+                  }
+                  if (kBase.includes('phone') || kBase.includes('mobile') || kBase.includes('phone number')) {
+                    newRow.phone = value;
+                    return;
+                  }
+                  if (kBase.includes('country') || kBase.includes('region')) {
+                    newRow.country = value;
+                    return;
+                  }
+                  if (kBase === 'status') {
+                    newRow.status = value;
+                    return;
+                  }
+                  if (kBase === 'notes' || kBase === 'note' || kBase.includes('note') || kBase.includes('comment') || kBase.includes('remarks')) {
+                    if (hasValue) notesParts.push(String(value));
+                    return;
+                  }
+
+                  // Any other column goes into notes
+                  if (hasValue) {
+                    notesParts.push(`${rawKey}: ${value}`);
+                  }
               });
+
+              if (notesParts.length > 0) {
+                newRow.note = notesParts.join('\n');
+              }
+
               // Return cleaned row + original for troubleshooting duplicate export if needed
               return { ...newRow, _raw: row };
           });
 
-          const validData = mappedData.filter(d => d.name || d.email);
+          const validData = mappedData.filter(d => d.name || d.email || d.phone);
           if (validData.length === 0) {
               alert("No valid data found in file.");
               return;

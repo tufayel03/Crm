@@ -25,12 +25,23 @@ const Mailbox: React.FC = () => {
     const [search, setSearch] = useState('');
     const [selectedFolder, setSelectedFolder] = useState<'General' | 'Sent' | 'Trash' | 'Clients' | string>('General');
     const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
+    const [isFilterOpen, setIsFilterOpen] = useState(false);
+    const [filterFrom, setFilterFrom] = useState('');
+    const [filterTo, setFilterTo] = useState('');
+    const [filterUnreadOnly, setFilterUnreadOnly] = useState(false);
+    const [filterHasAttachments, setFilterHasAttachments] = useState(false);
+    const [filterDateFrom, setFilterDateFrom] = useState('');
+    const [filterDateTo, setFilterDateTo] = useState('');
 
     // Pagination State
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage] = useState(50);
 
     const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
+    const [selectedEmailIds, setSelectedEmailIds] = useState<string[]>([]);
+    const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+    const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+    const [deleteProgress, setDeleteProgress] = useState(0);
     const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
     const accountMenuRef = useRef<HTMLDivElement>(null);
 
@@ -42,7 +53,7 @@ const Mailbox: React.FC = () => {
     const [replyError, setReplyError] = useState<string | null>(null);
 
     // Reset pagination when folder/search changes
-    useEffect(() => { setCurrentPage(1); }, [selectedFolder, search, selectedAccountId]);
+    useEffect(() => { setCurrentPage(1); setSelectedEmailIds([]); }, [selectedFolder, search, selectedAccountId, filterFrom, filterTo, filterUnreadOnly, filterHasAttachments, filterDateFrom, filterDateTo]);
 
     // Handle click outside account menu
     useEffect(() => {
@@ -94,8 +105,39 @@ const Mailbox: React.FC = () => {
             );
         }
 
+        // 1b. Advanced Filters
+        if (filterFrom) {
+            const term = filterFrom.toLowerCase();
+            list = list.filter(e =>
+                (e.from && e.from.toLowerCase().includes(term)) ||
+                (e.fromName && e.fromName.toLowerCase().includes(term))
+            );
+        }
+        if (filterTo) {
+            const term = filterTo.toLowerCase();
+            list = list.filter(e =>
+                (e.to && e.to.toLowerCase().includes(term))
+            );
+        }
+        if (filterUnreadOnly) {
+            list = list.filter(e => !e.isRead);
+        }
+        if (filterHasAttachments) {
+            list = list.filter(e => Array.isArray(e.attachments) && e.attachments.length > 0);
+        }
+        if (filterDateFrom) {
+            const fromDate = new Date(filterDateFrom);
+            list = list.filter(e => new Date(e.timestamp) >= fromDate);
+        }
+        if (filterDateTo) {
+            const toDate = new Date(filterDateTo);
+            toDate.setHours(23, 59, 59, 999);
+            list = list.filter(e => new Date(e.timestamp) <= toDate);
+        }
+
         // 2. Folder Routing
         return list.filter(email => {
+            if (email.folder === 'DELETED') return false;
             // Trash check first (unless we are IN Trash)
             const isTrash = email.folder === 'TRASH';
             if (selectedFolder === 'Trash') return isTrash;
@@ -144,6 +186,70 @@ const Mailbox: React.FC = () => {
         const start = (currentPage - 1) * itemsPerPage;
         return filteredEmails.slice(start, start + itemsPerPage);
     }, [filteredEmails, currentPage, itemsPerPage]);
+
+    const isPageSelected = useMemo(() => {
+        if (paginatedEmails.length === 0) return false;
+        const pageIds = paginatedEmails.map(e => e.id);
+        return pageIds.every(id => selectedEmailIds.includes(id));
+    }, [paginatedEmails, selectedEmailIds]);
+
+    const toggleSelect = (id: string) => {
+        setSelectedEmailIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    };
+
+    const toggleSelectPage = () => {
+        const pageIds = paginatedEmails.map(e => e.id);
+        if (pageIds.length === 0) return;
+        setSelectedEmailIds(prev => {
+            const allSelected = pageIds.every(id => prev.includes(id));
+            if (allSelected) {
+                return prev.filter(id => !pageIds.includes(id));
+            }
+            return [...new Set([...prev, ...pageIds])];
+        });
+    };
+
+    const clearSelection = () => setSelectedEmailIds([]);
+
+    const bulkMoveToTrash = async () => {
+        if (selectedEmailIds.length === 0) return;
+        for (const id of selectedEmailIds) {
+            await deleteEmail(id);
+        }
+        clearSelection();
+    };
+
+    const bulkRestore = async () => {
+        if (selectedEmailIds.length === 0) return;
+        for (const id of selectedEmailIds) {
+            await moveToFolder(id, 'INBOX');
+        }
+        clearSelection();
+    };
+
+    const openBulkDeleteForever = () => {
+        if (selectedEmailIds.length === 0) return;
+        setIsBulkDeleteModalOpen(true);
+    };
+
+    const confirmBulkDeleteForever = async () => {
+        if (selectedEmailIds.length === 0) return;
+        setIsBulkDeleting(true);
+        setDeleteProgress(0);
+        const total = selectedEmailIds.length;
+        for (let i = 0; i < total; i += 1) {
+            await deleteForever(selectedEmailIds[i]);
+            const pct = Math.round(((i + 1) / total) * 100);
+            setDeleteProgress(pct);
+        }
+        clearSelection();
+        setIsBulkDeleting(false);
+        setIsBulkDeleteModalOpen(false);
+    };
+
+    const cancelBulkDeleteForever = () => {
+        setIsBulkDeleteModalOpen(false);
+    };
 
     const selectedEmail = useMemo(() =>
         emails.find(e => e.id === selectedEmailId),
@@ -237,20 +343,33 @@ const Mailbox: React.FC = () => {
 
     // --- Components ---
 
-    const SidebarItem = ({ icon: Icon, label, id, count, indent = false, activeColor = 'bg-[#d3e3fd] text-[#001d35]' }: any) => (
-        <button
-            onClick={() => { setSelectedFolder(id); setSelectedEmailId(null); }}
-            className={`w-full flex items-center justify-between px-6 py-2 text-sm font-medium rounded-r-full mr-2 transition-colors ${selectedFolder === id
-                ? activeColor + ' font-bold'
-                : 'text-gray-700 hover:bg-gray-100'
-                } ${indent ? 'pl-10' : ''}`}
-        >
-            <div className="flex items-center gap-4">
-                <Icon size={18} className={selectedFolder === id ? 'fill-current' : ''} />
-                <span className="truncate">{label}</span>
-            </div>
-            {count > 0 && <span className={`text-xs ${selectedFolder === id ? 'font-bold' : 'font-medium'}`}>{count}</span>}
-        </button>
+    const SidebarItem = ({ icon: Icon, label, id, count, indent = false, activeColor = 'bg-[#d3e3fd] text-[#001d35]', onDelete }: any) => (
+        <div className="group relative">
+            <button
+                onClick={() => { setSelectedFolder(id); setSelectedEmailId(null); }}
+                className={`w-full flex items-center justify-between px-6 py-2 text-sm font-medium rounded-r-full mr-2 transition-colors ${selectedFolder === id
+                    ? activeColor + ' font-bold'
+                    : 'text-gray-700 hover:bg-gray-100'
+                    } ${indent ? 'pl-10' : ''}`}
+            >
+                <div className="flex items-center gap-4">
+                    <Icon size={18} className={selectedFolder === id ? 'fill-current' : ''} />
+                    <span className="truncate">{label}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    {count > 0 && <span className={`text-xs ${selectedFolder === id ? 'font-bold' : 'font-medium'}`}>{count}</span>}
+                    {onDelete && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                            className="p-1 rounded hover:bg-gray-200 opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Delete label"
+                        >
+                            <Trash2 size={14} />
+                        </button>
+                    )}
+                </div>
+            </button>
+        </div>
     );
 
     return (
@@ -343,7 +462,22 @@ const Mailbox: React.FC = () => {
                         </button>
                     </div>
                     {availableLabels.map(label => (
-                        <SidebarItem key={label} icon={Tag} label={label} id={label} />
+                        <SidebarItem
+                            key={label}
+                            icon={Tag}
+                            label={label}
+                            id={label}
+                            onDelete={() => {
+                                if (!window.confirm(`Delete label "${label}"? This removes it from settings and all emails.`)) return;
+                                const current = generalSettings.availableLabels || [];
+                                useSettingsStore.getState().updateGeneralSettings({
+                                    availableLabels: current.filter(l => l !== label)
+                                });
+                                emails
+                                    .filter(e => (e.labels || []).includes(label))
+                                    .forEach(e => updateLabels(e.id, (e.labels || []).filter(l => l !== label)));
+                            }}
+                        />
                     ))}
 
                     <div className="my-2 border-t border-gray-200 mx-2"></div>
@@ -377,6 +511,23 @@ const Mailbox: React.FC = () => {
                 <div className="border-b border-gray-200 bg-white/95 backdrop-blur z-10 sticky top-0 flex flex-col">
                     <div className="h-14 flex items-center justify-between px-4">
                         <div className="flex items-center gap-2 flex-1 max-w-3xl">
+                            <div className="flex items-center gap-2 mr-3">
+                                <input
+                                    type="checkbox"
+                                    className="w-4 h-4 border-gray-300 rounded focus:ring-0 cursor-pointer"
+                                    checked={isPageSelected}
+                                    onChange={toggleSelectPage}
+                                    title="Select page"
+                                />
+                                {selectedEmailIds.length > 0 && (
+                                    <button
+                                        onClick={clearSelection}
+                                        className="text-xs text-gray-500 hover:text-gray-700"
+                                    >
+                                        Clear ({selectedEmailIds.length})
+                                    </button>
+                                )}
+                            </div>
                             <div className="relative w-full max-w-xl group">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-600" size={20} />
                                 <input
@@ -392,6 +543,36 @@ const Mailbox: React.FC = () => {
                             </div>
                         </div>
                         <div className="flex items-center gap-3 text-gray-600">
+                            {selectedEmailIds.length > 0 && (
+                                <>
+                                    {selectedFolder === 'Trash' ? (
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={bulkRestore}
+                                                className="px-3 py-1.5 text-xs font-bold bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100"
+                                                title="Restore selected"
+                                            >
+                                                Restore
+                                            </button>
+                                            <button
+                                                onClick={openBulkDeleteForever}
+                                                className="px-3 py-1.5 text-xs font-bold bg-red-50 text-red-700 rounded-lg hover:bg-red-100"
+                                                title="Delete selected forever"
+                                            >
+                                                Delete Forever
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={bulkMoveToTrash}
+                                            className="px-3 py-1.5 text-xs font-bold bg-red-50 text-red-700 rounded-lg hover:bg-red-100"
+                                            title="Move selected to trash"
+                                        >
+                                            Delete
+                                        </button>
+                                    )}
+                                </>
+                            )}
                             {/* PAGINATION CONTROLS */}
                             <div className="flex items-center gap-2 mr-4 text-sm text-gray-500">
                                 <span>{(currentPage - 1) * itemsPerPage + 1}-{Math.min(currentPage * itemsPerPage, filteredEmails.length)} of {filteredEmails.length}</span>
@@ -412,20 +593,82 @@ const Mailbox: React.FC = () => {
                             <button onClick={async () => { await syncEmails(); fetchEmails(selectedAccountId); }} className="p-2 hover:bg-gray-100 rounded-full" title="Refresh">
                                 <RefreshCw size={20} className={refreshing ? 'animate-spin' : ''} />
                             </button>
-                            <button className="p-2 hover:bg-gray-100 rounded-full">
-                                <SettingsIcon size={20} />
+                            <button
+                                onClick={() => setIsFilterOpen(v => !v)}
+                                className={`p-2 rounded-full ${isFilterOpen ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100'}`}
+                                title="Filters"
+                            >
+                                <Filter size={20} />
                             </button>
                         </div>
                     </div>
 
-                    {/* SEARCH CHIPS (Hardcoded for now as placeholders for Advanced Search UI) */}
-                    <div className="flex gap-2 px-4 pb-2 overflow-x-auto no-scrollbar">
-                        {['From', 'Any time', 'Has attachment', 'To', 'Is unread'].map(chip => (
-                            <button key={chip} className="px-3 py-1 border border-gray-200 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-50 whitespace-nowrap">
-                                {chip}
-                            </button>
-                        ))}
-                    </div>
+                    {/* SEARCH FILTERS */}
+                    {isFilterOpen && (
+                        <div className="px-4 pb-3">
+                            <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+                                <input
+                                    type="text"
+                                    placeholder="From"
+                                    value={filterFrom}
+                                    onChange={(e) => setFilterFrom(e.target.value)}
+                                    className="px-3 py-2 border border-gray-200 rounded-lg text-xs"
+                                />
+                                <input
+                                    type="text"
+                                    placeholder="To"
+                                    value={filterTo}
+                                    onChange={(e) => setFilterTo(e.target.value)}
+                                    className="px-3 py-2 border border-gray-200 rounded-lg text-xs"
+                                />
+                                <input
+                                    type="date"
+                                    value={filterDateFrom}
+                                    onChange={(e) => setFilterDateFrom(e.target.value)}
+                                    className="px-3 py-2 border border-gray-200 rounded-lg text-xs"
+                                    title="From date"
+                                />
+                                <input
+                                    type="date"
+                                    value={filterDateTo}
+                                    onChange={(e) => setFilterDateTo(e.target.value)}
+                                    className="px-3 py-2 border border-gray-200 rounded-lg text-xs"
+                                    title="To date"
+                                />
+                                <div className="flex items-center gap-2">
+                                    <label className="flex items-center gap-2 text-xs text-gray-600">
+                                        <input
+                                            type="checkbox"
+                                            checked={filterHasAttachments}
+                                            onChange={(e) => setFilterHasAttachments(e.target.checked)}
+                                        />
+                                        Has attachment
+                                    </label>
+                                    <label className="flex items-center gap-2 text-xs text-gray-600">
+                                        <input
+                                            type="checkbox"
+                                            checked={filterUnreadOnly}
+                                            onChange={(e) => setFilterUnreadOnly(e.target.checked)}
+                                        />
+                                        Unread
+                                    </label>
+                                    <button
+                                        onClick={() => {
+                                            setFilterFrom('');
+                                            setFilterTo('');
+                                            setFilterDateFrom('');
+                                            setFilterDateTo('');
+                                            setFilterHasAttachments(false);
+                                            setFilterUnreadOnly(false);
+                                        }}
+                                        className="ml-auto text-xs text-blue-600 hover:text-blue-700"
+                                    >
+                                        Reset
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex-1 overflow-y-auto w-full">
@@ -433,7 +676,15 @@ const Mailbox: React.FC = () => {
                         <div className="flex flex-col items-center justify-center h-full text-gray-500">
                             <p className="text-lg">No messages in "{selectedFolder}"</p>
                             {selectedFolder === 'Trash' && (
-                                <button className="mt-4 px-4 py-2 text-blue-600 font-medium hover:bg-blue-50 rounded">Empty Trash Now</button>
+                                <button
+                                    onClick={() => {
+                                        const trashIds = emails.filter(e => e.folder === 'TRASH').map(e => e.id);
+                                        trashIds.forEach(id => deleteForever(id));
+                                    }}
+                                    className="mt-4 px-4 py-2 text-blue-600 font-medium hover:bg-blue-50 rounded"
+                                >
+                                    Empty Trash Now
+                                </button>
                             )}
                         </div>
                     ) : (
@@ -455,7 +706,13 @@ const Mailbox: React.FC = () => {
                                             {/* Checkbox & Star */}
                                             <td className="w-16 py-3 pl-4 pr-2 align-top border-b border-gray-100">
                                                 <div className="flex items-center gap-5">
-                                                    <input type="checkbox" className="w-4 h-4 border-gray-300 rounded focus:ring-0 cursor-pointer" onClick={(e) => e.stopPropagation()} />
+                                                    <input
+                                                        type="checkbox"
+                                                        className="w-4 h-4 border-gray-300 rounded focus:ring-0 cursor-pointer"
+                                                        checked={selectedEmailIds.includes(email.id)}
+                                                        onChange={() => toggleSelect(email.id)}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    />
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); toggleStar(email.id); }}
                                                         className="text-gray-400 hover:text-yellow-400 focus:outline-none"
@@ -510,7 +767,14 @@ const Mailbox: React.FC = () => {
                                             {/* Hover Actions (Absolute Right) */}
                                             <td className="w-0 p-0 border-b border-gray-100 relative">
                                                 <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 backdrop-blur pl-2 shadow-sm rounded-l">
-                                                    <button onClick={(e) => { e.stopPropagation(); deleteEmail(email.id); }} className="p-2 hover:bg-gray-200 rounded-full text-gray-600" title="Delete">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            selectedFolder === 'Trash' ? deleteForever(email.id) : deleteEmail(email.id);
+                                                        }}
+                                                        className="p-2 hover:bg-gray-200 rounded-full text-gray-600"
+                                                        title="Delete"
+                                                    >
                                                         <Trash2 size={18} />
                                                     </button>
                                                     <button onClick={(e) => { e.stopPropagation(); markAsRead(email.id); }} className="p-2 hover:bg-gray-200 rounded-full text-gray-600" title="Mark Unread">
@@ -535,6 +799,49 @@ const Mailbox: React.FC = () => {
                 </div>
             </div>
 
+            {isBulkDeleteModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+                        <div className="flex items-center gap-3 mb-4 text-danger">
+                            <div className="p-2 bg-red-100 rounded-full">
+                                <Trash2 size={24} />
+                            </div>
+                            <h3 className="font-bold text-lg text-textPrimary">Delete Forever?</h3>
+                        </div>
+                        <p className="text-sm text-textSecondary mb-6 leading-relaxed">
+                            Permanently delete {selectedEmailIds.length} email(s) from Trash. This cannot be undone.
+                        </p>
+                        {isBulkDeleting && (
+                            <div className="mb-5">
+                                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full bg-danger transition-all"
+                                        style={{ width: `${deleteProgress}%` }}
+                                    />
+                                </div>
+                                <div className="mt-2 text-xs text-textMuted">{deleteProgress}%</div>
+                            </div>
+                        )}
+                        <div className="flex gap-3">
+                            <button
+                                onClick={cancelBulkDeleteForever}
+                                disabled={isBulkDeleting}
+                                className="flex-1 py-2 border border-border rounded-xl font-bold text-textSecondary hover:bg-slate-50 transition-colors disabled:opacity-60"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={confirmBulkDeleteForever}
+                                disabled={isBulkDeleting}
+                                className="flex-1 py-2 bg-danger text-white rounded-xl font-bold hover:bg-red-600 transition-colors shadow-lg shadow-red-100 disabled:opacity-60"
+                            >
+                                {isBulkDeleting ? 'Deleting...' : 'Delete'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* 3. EMAIL CONTENT / READING PANE */}
             <div className={`flex-1 bg-white flex flex-col ${selectedEmailId ? 'flex' : 'hidden'}`}>
                 {selectedEmail ? (
@@ -542,7 +849,11 @@ const Mailbox: React.FC = () => {
                         {/* Toolbar */}
                         <div className="h-16 border-b border-border flex items-center justify-between px-6 bg-white shrink-0">
                             <div className="flex items-center gap-3 text-textSecondary">
-                                <button onClick={() => deleteEmail(selectedEmail.id)} className="p-2 hover:bg-slate-100 rounded-full" title="Delete">
+                                <button
+                                    onClick={() => selectedFolder === 'Trash' ? deleteForever(selectedEmail.id) : deleteEmail(selectedEmail.id)}
+                                    className="p-2 hover:bg-slate-100 rounded-full"
+                                    title="Delete"
+                                >
 
                                     <Trash2 size={18} />
                                 </button>
