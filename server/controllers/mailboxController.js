@@ -42,9 +42,20 @@ exports.updateMessage = async (req, res) => {
   if (updates.isRead !== undefined) validUpdates.isRead = updates.isRead;
   if (updates.isStarred !== undefined) validUpdates.isStarred = updates.isStarred;
   if (updates.folder !== undefined) validUpdates.folder = updates.folder;
+  if (updates.labels !== undefined) validUpdates.labels = updates.labels;
 
   const msg = await MailMessage.findOneAndUpdate({ _id: id }, { $set: validUpdates }, { new: true });
   if (!msg) return res.status(404).json({ message: 'Message not found' });
 
   res.json(msg);
+};
+
+exports.debugSent = async (req, res) => {
+  try {
+    const messages = await MailMessage.find({ folder: 'SENT' }).sort({ createdAt: -1 }).limit(20);
+    const allCount = await MailMessage.countDocuments();
+    res.json({ count: messages.length, total: allCount, messages });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 };

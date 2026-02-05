@@ -23,6 +23,28 @@ exports.open = async (req, res) => {
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
   res.status(200).end(ONE_BY_ONE_GIF, 'binary');
+  res.setHeader('Expires', '0');
+  res.status(200).end(ONE_BY_ONE_GIF, 'binary');
+};
+
+const MailMessage = require('../models/MailMessage');
+
+exports.manualOpen = async (req, res) => {
+  try {
+    const { trackingId } = req.params;
+    if (trackingId) {
+      await MailMessage.updateOne(
+        { trackingId, openedAt: { $exists: false } }, // Only track first open
+        { $set: { openedAt: new Date() } }
+      );
+    }
+  } catch (e) { }
+
+  res.setHeader('Content-Type', 'image/gif');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.status(200).end(ONE_BY_ONE_GIF, 'binary');
 };
 
 exports.click = async (req, res) => {

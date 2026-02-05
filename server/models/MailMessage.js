@@ -19,10 +19,14 @@ const MailMessageSchema = new mongoose.Schema({
   timestamp: Date,
   isRead: Boolean,
   isStarred: Boolean,
-  attachments: [MailAttachmentSchema]
+  labels: { type: [String], default: [] },
+  attachments: [MailAttachmentSchema],
+  trackingId: { type: String, sparse: true, unique: true }, // For open tracking
+  openedAt: Date
 }, { timestamps: true });
 
 MailMessageSchema.index({ accountId: 1, imapUid: 1 }, { unique: true, sparse: true });
+MailMessageSchema.index({ trackingId: 1 }, { unique: true, sparse: true });
 
 MailMessageSchema.set('toJSON', {
   virtuals: true,

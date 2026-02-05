@@ -13,7 +13,7 @@ export interface User {
   lastActive?: string;
 }
 
-export type LeadStatus = string; 
+export type LeadStatus = string;
 export type ServiceType = 'SEO' | 'PPC' | 'Full Management' | 'Brand Protection' | string;
 export type SubscriptionStatus = 'Active' | 'Paused' | 'Cancelled';
 
@@ -175,7 +175,7 @@ export interface Campaign {
   targetOutcome?: string | 'All';
   targetServiceStatus?: 'All' | 'Active' | 'Expired';
   targetServicePlan?: string | 'All';
-  
+
   totalRecipients: number;
   sentCount: number;
   failedCount: number;
@@ -210,16 +210,16 @@ export interface EmailAccount {
 }
 
 // --- PERMISSIONS TYPES ---
-export type PermissionResource = 
-  | 'dashboard' 
-  | 'leads' 
-  | 'clients' 
-  | 'tasks' 
-  | 'meetings' 
-  | 'mailbox' 
-  | 'campaigns' 
-  | 'payments' 
-  | 'team' 
+export type PermissionResource =
+  | 'dashboard'
+  | 'leads'
+  | 'clients'
+  | 'tasks'
+  | 'meetings'
+  | 'mailbox'
+  | 'campaigns'
+  | 'payments'
+  | 'team'
   | 'settings';
 
 export interface RolePermissions {
@@ -248,6 +248,7 @@ export interface GeneralSettings {
   systemWalletBalance?: number;
   invoiceUseLogo?: boolean;
   invoiceFooterText?: string;
+  availableLabels?: string[];
 }
 
 export interface SystemTemplates {

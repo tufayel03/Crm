@@ -11,8 +11,10 @@ export interface EmailMessage {
   timestamp: string;
   isRead: boolean;
   isStarred: boolean;
+  labels: string[];
   attachments?: { name: string; size: string }[];
   category?: 'primary' | 'social' | 'promotions';
+  folder?: string;
 }
 
 interface MailState {
@@ -23,9 +25,13 @@ interface MailState {
   syncEmails: (limit?: number) => Promise<void>;
   clearMailbox: () => Promise<void>;
   sendEmail: (to: string, subject: string, body: string) => void;
+  addEmail: (email: EmailMessage) => void;
   markAsRead: (id: string) => void;
   toggleStar: (id: string) => void;
-  deleteEmail: (id: string) => void;
+  deleteEmail: (id: string) => Promise<void>;
+  updateLabels: (id: string, labels: string[]) => Promise<void>;
+  moveToFolder: (id: string, folder: string) => Promise<void>;
+  deleteForever: (id: string) => Promise<void>;
 }
 
 export const useMailStore = create<MailState>((set, get) => ({
@@ -80,7 +86,10 @@ export const useMailStore = create<MailState>((set, get) => ({
       body,
       timestamp: new Date().toISOString(),
       isRead: true,
-      isStarred: false
+      timestamp: new Date().toISOString(),
+      isRead: true,
+      isStarred: false,
+      labels: []
     }, ...state.emails]
   })),
 
@@ -110,12 +119,45 @@ export const useMailStore = create<MailState>((set, get) => ({
   },
 
   deleteEmail: async (id) => {
+    // Optimistic: Move to TRASH
     set((state) => ({
-      emails: state.emails.filter(e => e.id !== id)
+      emails: state.emails.map(e => e.id === id ? { ...e, folder: 'TRASH' } : e)
     }));
-    // Note: If you want persistent delete, you'd add an API call here too. 
-    // Assuming clearMailbox is global, but usually we need deleteMessage(id). 
-    // Controller currently doesn't have deleteSingleMessage, so we leave it local or add it later.
+    try {
+      await apiRequest(`/api/v1/mailbox/messages/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ folder: 'TRASH' })
+      });
+    } catch (e) { console.error(e); }
+  },
+
+  updateLabels: async (id, labels) => {
+    set((state) => ({
+      emails: state.emails.map(e => e.id === id ? { ...e, labels } : e)
+    }));
+    await apiRequest(`/api/v1/mailbox/messages/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ labels })
+    });
+  },
+
+  addEmail: (email) => {
+    set(state => ({ emails: [email, ...state.emails] }));
+  },
+
+  moveToFolder: async (id, folder) => {
+    set((state) => ({
+      emails: state.emails.map(e => e.id === id ? { ...e, folder } : e)
+    }));
+    await apiRequest(`/api/v1/mailbox/messages/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ folder })
+    });
+  },
+
+  deleteForever: async (id) => {
+    set((state) => ({ emails: state.emails.filter(e => e.id !== id) }));
+    await apiRequest(`/api/v1/mailbox/messages/${id}`, { method: 'DELETE' });
   },
 
 }));

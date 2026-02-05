@@ -54,6 +54,7 @@ const SettingsSchema = new mongoose.Schema({
   },
   leadStatuses: [String],
   leadOutcomes: [String],
+  availableLabels: { type: [String], default: [] },
   permissions: mongoose.Schema.Types.Mixed
 }, { timestamps: true });
 

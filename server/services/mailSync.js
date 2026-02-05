@@ -134,8 +134,27 @@ const syncAccount = async (account, limit = 1000) => {
       }
     }
 
-    // Update the message object with the determined folder
-    msg.folder = folder;
+    // 3. Prevent Overwriting TRASH or SENT
+    // We need to check if the message already exists and has a restricted folder
+    const existingMsg = await MailMessage.findOne({ accountId: msg.accountId, imapUid: msg.imapUid }).select('folder');
+
+    if (existingMsg) {
+      if (existingMsg.folder === 'TRASH' || existingMsg.folder === 'SENT') {
+        msg.folder = existingMsg.folder;
+        // If it was trash, we might want to keep it read? Or update other flags?
+        // For now, just preserving the folder is key.
+      } else if (existingMsg.folder !== 'General' && folder === 'General') {
+        // Optional: If user manually moved to a custom folder (that is not Trash/Sent), 
+        // and our logic says "General", maybe we should preserve the custom folder too?
+        // For now, let's strictly protect TRASH and SENT.
+        // If we want to persist ALL manual moves, we should prioritize existing folder unless it was 'General'.
+        if (existingMsg.folder && existingMsg.folder !== 'General') {
+          msg.folder = existingMsg.folder;
+        }
+      }
+    } else {
+      msg.folder = folder;
+    }
 
     await MailMessage.updateOne(
       { accountId: msg.accountId, imapUid: msg.imapUid },

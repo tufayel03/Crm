@@ -6,26 +6,30 @@ import { useClientsStore } from '../stores/clientsStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useCampaignStore } from '../stores/campaignStore'; // Import Campaign Store for Templates
 import { applyTemplateTokens, buildCompanyTokens } from '../utils/templateTokens';
+import { apiRequest } from '../utils/api';
 import {
     Inbox, Star, Send, Trash2, Search, MoreVertical,
     RefreshCw, ChevronLeft, ChevronRight, Paperclip,
     CornerUpLeft, MoreHorizontal, Tag, Briefcase,
     Folder, ChevronDown, ChevronRight as ChevronRightIcon,
-    Mail, Plus, X, FileText, Check, User
+    Mail, Plus, X, FileText, Check, User, Settings as SettingsIcon, Filter, ArrowLeft, ArrowRight
 } from 'lucide-react';
 
 const Mailbox: React.FC = () => {
-    const { emails, markAsRead, toggleStar, deleteEmail, fetchEmails, syncEmails, refreshing, error: mailError } = useMailStore();
+    const { emails, markAsRead, toggleStar, deleteEmail, deleteForever, moveToFolder, updateLabels, fetchEmails, syncEmails, refreshing } = useMailStore();
     const { leads, statuses, addNote } = useLeadsStore();
     const { clients, addClientNote } = useClientsStore();
     const { emailAccounts, generalSettings } = useSettingsStore();
     const { templates, sendSingleEmail } = useCampaignStore();
 
     const [search, setSearch] = useState('');
-    const [selectedFolder, setSelectedFolder] = useState<'General' | 'Clients' | string>('General');
-    const [selectedAccountId, setSelectedAccountId] = useState<string>('all'); // 'all' or emailAccount.id
+    const [selectedFolder, setSelectedFolder] = useState<'General' | 'Sent' | 'Trash' | 'Clients' | string>('General');
+    const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
 
-    const [expandedLeads, setExpandedLeads] = useState(true);
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage] = useState(50);
+
     const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
     const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
     const accountMenuRef = useRef<HTMLDivElement>(null);
@@ -36,6 +40,9 @@ const Mailbox: React.FC = () => {
     const [selectedTemplateId, setSelectedTemplateId] = useState('');
     const [isSendingReply, setIsSendingReply] = useState(false);
     const [replyError, setReplyError] = useState<string | null>(null);
+
+    // Reset pagination when folder/search changes
+    useEffect(() => { setCurrentPage(1); }, [selectedFolder, search, selectedAccountId]);
 
     // Handle click outside account menu
     useEffect(() => {
@@ -51,48 +58,33 @@ const Mailbox: React.FC = () => {
     useEffect(() => {
         if (emailAccounts.length === 0) return;
         fetchEmails(selectedAccountId);
-    }, [selectedAccountId, emailAccounts, fetchEmails]);
+        const id1 = setInterval(() => fetchEmails(selectedAccountId), 10000);
+        const id2 = setInterval(() => syncEmails(), 5 * 60 * 1000);
+        return () => { clearInterval(id1); clearInterval(id2); };
+    }, [selectedAccountId, emailAccounts, fetchEmails, syncEmails]);
 
-    useEffect(() => {
-        if (emailAccounts.length === 0) return;
-        const id = setInterval(() => {
-            fetchEmails(selectedAccountId);
-        }, 10000);
-        return () => clearInterval(id);
-    }, [selectedAccountId, emailAccounts, fetchEmails]);
-
-    useEffect(() => {
-        if (emailAccounts.length === 0) return;
-        const id = setInterval(() => {
-            syncEmails();
-        }, 5 * 60 * 1000);
-        return () => clearInterval(id);
-    }, [emailAccounts, syncEmails]);
-
-    // Reset reply state when changing email
-    useEffect(() => {
-        setIsReplying(false);
-        setReplyContent('');
-        setSelectedTemplateId('');
-    }, [selectedEmailId]);
+    // Derived Labels (from Settings + existing emails)
+    const availableLabels = useMemo(() => {
+        const settingLabels = generalSettings?.availableLabels || [];
+        const emailLabels = new Set(emails.flatMap(e => e.labels || []));
+        return Array.from(new Set([...settingLabels, ...Array.from(emailLabels)])).sort();
+    }, [emails, generalSettings]);
 
     // --- Account Switching Logic ---
     const currentAccount = useMemo(() =>
         emailAccounts.find(acc => acc.id === selectedAccountId),
         [emailAccounts, selectedAccountId]);
 
-    // --- Filtering Logic (Folder Routing & Account) ---
+    // --- Filtering Logic ---
     const filteredEmails = useMemo(() => {
         let list = emails;
 
-        // 1. Account Filter
+        // 0. Account Filter
         if (selectedAccountId !== 'all' && currentAccount) {
-            // Filter emails sent TO the selected account
-            // Note: Mock data needs to align. In production, this matches the 'to' field.
             list = list.filter(e => e.to.toLowerCase() === currentAccount.email.toLowerCase());
         }
 
-        // 2. Search Filter
+        // 1. Global Search
         if (search) {
             const term = search.toLowerCase();
             list = list.filter(e =>
@@ -102,49 +94,56 @@ const Mailbox: React.FC = () => {
             );
         }
 
-        // 3. Folder Routing Logic
+        // 2. Folder Routing
         return list.filter(email => {
+            // Trash check first (unless we are IN Trash)
+            const isTrash = email.folder === 'TRASH';
+            if (selectedFolder === 'Trash') return isTrash;
+            if (isTrash) return false; // Hide trash from other folders
+
+            // Sent check
+            const isSent = email.folder === 'SENT';
+            if (selectedFolder === 'Sent') return isSent;
+            if (isSent) return false; // Hide sent from Inbox? (Gmail shows conversations, but for now strict separation)
+
             // Identify Sender
             const leadMatch = leads.find(l => l.email.toLowerCase() === email.from.toLowerCase());
             const clientMatch = clients.find(c => c.email.toLowerCase() === email.from.toLowerCase());
 
-            // A. "General" Folder:
+            // A. General / Inbox
             if (selectedFolder === 'General') {
-                // Exclude Clients
-                if (clientMatch) return false;
-
-                // Exclude Leads w/ specific statuses (New, Contacted) as per request
-                if (leadMatch) {
+                if (clientMatch) return false; // Clients go to Clients folder
+                if (leadMatch) { // Leads status routing
                     if (leadMatch.status === 'New') return false;
                     if (leadMatch.status === 'Contacted') return false;
                 }
-
+                // Also hide if it has a label? strict gmail style: Inbox shows everything unless archived. 
+                // We'll keep our "Smart Routing" logic: If it matches a specific lead status folder, maybe hide from inbox?
+                // For now, keep existing logic: 
                 return true;
             }
 
-            // B. "Clients" Folder:
-            if (selectedFolder === 'Clients') {
-                return !!clientMatch;
+            if (selectedFolder === 'Clients') return !!clientMatch;
+            if (selectedFolder === 'Starred') return email.isStarred;
+
+            // Labels match
+            if (availableLabels.includes(selectedFolder)) {
+                return (email.labels || []).includes(selectedFolder);
             }
 
-            // C. "Leads" Parent Folder (Optional view for all leads)
-            if (selectedFolder === 'Leads_All') {
-                return !!leadMatch;
-            }
-
-            // D. "Starred" Folder
-            if (selectedFolder === 'Starred') {
-                return email.isStarred;
-            }
-
-            // E. Lead Status Sub-Folders (e.g. "New", "Interested")
+            // Lead Status match
             if (statuses.includes(selectedFolder)) {
                 return leadMatch && leadMatch.status === selectedFolder;
             }
 
             return false;
         });
-    }, [emails, search, selectedFolder, leads, clients, statuses, selectedAccountId, currentAccount]);
+    }, [emails, search, selectedFolder, leads, clients, statuses, selectedAccountId, currentAccount, availableLabels]);
+
+    const paginatedEmails = useMemo(() => {
+        const start = (currentPage - 1) * itemsPerPage;
+        return filteredEmails.slice(start, start + itemsPerPage);
+    }, [filteredEmails, currentPage, itemsPerPage]);
 
     const selectedEmail = useMemo(() =>
         emails.find(e => e.id === selectedEmailId),
@@ -202,8 +201,22 @@ const Mailbox: React.FC = () => {
         const html = applyTemplateTokens(replyContent, tokenData).replace(/\n/g, '<br/>');
         const accountId = selectedAccountId !== 'all' ? selectedAccountId : undefined;
         const subject = applyTemplateTokens(`Re: ${selectedEmail.subject}`, tokenData);
-        sendSingleEmail(selectedEmail.from, subject, html, [], accountId)
-            .then(() => {
+
+        apiRequest('/api/v1/email/send', {
+            method: 'POST',
+            body: JSON.stringify({
+                to: selectedEmail.from,
+                subject,
+                html,
+                accountId
+            })
+        })
+            .then((res: any) => {
+                // Return value is the created message object
+                if (res && res.id) {
+                    useMailStore.getState().addEmail(res);
+                }
+
                 // 2. Log to CRM if applicable
                 if (senderInfo.type === 'Lead' && senderInfo.data) {
                     addNote(senderInfo.data.id, `Replied to email via Mailbox: \n"${replyContent.substring(0, 50)}..."`, 'Me');
@@ -224,19 +237,19 @@ const Mailbox: React.FC = () => {
 
     // --- Components ---
 
-    const SidebarItem = ({ icon: Icon, label, id, count, indent = false }: any) => (
+    const SidebarItem = ({ icon: Icon, label, id, count, indent = false, activeColor = 'bg-[#d3e3fd] text-[#001d35]' }: any) => (
         <button
             onClick={() => { setSelectedFolder(id); setSelectedEmailId(null); }}
-            className={`w-full flex items-center justify-between px-4 py-2 text-sm font-medium rounded-r-full mr-4 transition-colors ${selectedFolder === id
-                    ? 'bg-primary/20 text-darkGreen'
-                    : 'text-textSecondary hover:bg-slate-100'
+            className={`w-full flex items-center justify-between px-6 py-2 text-sm font-medium rounded-r-full mr-2 transition-colors ${selectedFolder === id
+                ? activeColor + ' font-bold'
+                : 'text-gray-700 hover:bg-gray-100'
                 } ${indent ? 'pl-10' : ''}`}
         >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
                 <Icon size={18} className={selectedFolder === id ? 'fill-current' : ''} />
                 <span className="truncate">{label}</span>
             </div>
-            {count > 0 && <span className="text-xs font-bold">{count}</span>}
+            {count > 0 && <span className={`text-xs ${selectedFolder === id ? 'font-bold' : 'font-medium'}`}>{count}</span>}
         </button>
     );
 
@@ -244,210 +257,247 @@ const Mailbox: React.FC = () => {
         <div className="h-[calc(100vh-64px)] -m-8 flex bg-white overflow-hidden">
 
             {/* 1. FOLDER SIDEBAR */}
-            <div className="w-64 bg-slate-50 border-r border-border flex flex-col shrink-0 py-4">
+            <div className="w-56 bg-white flex flex-col shrink-0 py-4 pr-2 group">
 
-                {/* Account Switcher */}
-                <div className="px-4 mb-4 relative" ref={accountMenuRef}>
-                    <button
-                        onClick={() => setIsAccountMenuOpen(!isAccountMenuOpen)}
-                        className="w-full flex items-center justify-between p-2 bg-white border border-border rounded-xl shadow-sm hover:border-primary transition-colors mb-4"
-                    >
-                        <div className="flex items-center gap-2 overflow-hidden">
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-xs shrink-0 ${currentAccount ? (currentAccount.provider === 'Namecheap' ? 'bg-orange-500' : 'bg-blue-600') : 'bg-slate-800'}`}>
-                                {currentAccount ? currentAccount.provider.charAt(0) : 'A'}
-                            </div>
-                            <div className="text-left overflow-hidden">
-                                <p className="text-xs font-bold text-textPrimary truncate">{currentAccount ? currentAccount.label : 'All Inboxes'}</p>
-                                <p className="text-[10px] text-textMuted truncate">{currentAccount ? currentAccount.email : 'Unified View'}</p>
-                            </div>
-                        </div>
-                        <ChevronDown size={14} className="text-textMuted" />
-                    </button>
-
-                    {/* Dropdown */}
-                    {isAccountMenuOpen && (
-                        <div className="absolute top-14 left-4 right-4 bg-white border border-border rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95">
-                            <button
-                                onClick={() => { setSelectedAccountId('all'); setIsAccountMenuOpen(false); }}
-                                className="w-full flex items-center justify-between p-3 hover:bg-slate-50 text-left border-b border-border"
-                            >
-                                <div className="flex items-center gap-2">
-                                    <div className="w-6 h-6 rounded bg-slate-800 flex items-center justify-center text-white text-[10px] font-bold">A</div>
-                                    <span className="text-xs font-bold">All Inboxes</span>
-                                </div>
-                                {selectedAccountId === 'all' && <Check size={14} className="text-primary" />}
-                            </button>
-
-                            <div className="max-h-48 overflow-y-auto">
-                                {emailAccounts.map(acc => (
-                                    <button
-                                        key={acc.id}
-                                        onClick={() => { setSelectedAccountId(acc.id); setIsAccountMenuOpen(false); }}
-                                        className="w-full flex items-center justify-between p-3 hover:bg-slate-50 text-left"
-                                    >
-                                        <div className="flex items-center gap-2 overflow-hidden">
-                                            <div className={`w-6 h-6 rounded flex items-center justify-center text-white text-[10px] font-bold shrink-0 ${acc.provider === 'Namecheap' ? 'bg-orange-500' : 'bg-blue-600'}`}>
-                                                {acc.provider.charAt(0)}
-                                            </div>
-                                            <div className="overflow-hidden">
-                                                <p className="text-xs font-bold truncate">{acc.label}</p>
-                                                <p className="text-[10px] text-textMuted truncate">{acc.email}</p>
-                                            </div>
-                                        </div>
-                                        {selectedAccountId === acc.id && <Check size={14} className="text-primary" />}
-                                    </button>
-                                ))}
-                            </div>
-
-                            {emailAccounts.length === 0 && (
-                                <div className="p-3 text-[10px] text-textMuted text-center bg-slate-50">
-                                    No email accounts connected via Settings.
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    <button className="w-full py-3 bg-darkGreen text-white font-bold rounded-xl shadow-lg shadow-darkGreen/10 hover:bg-opacity-90 flex items-center justify-center gap-2 transition-all">
-                        <div className="text-white"><Plus size={18} /></div> Compose
+                <div className="px-3 mb-6">
+                    <button className="flex items-center gap-3 px-6 py-4 bg-[#c2e7ff] text-[#001d35] font-semibold rounded-2xl hover:shadow-md transition-shadow">
+                        <Plus size={24} />
+                        <span>Compose</span>
                     </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto space-y-1 no-scrollbar">
-                    <SidebarItem icon={Inbox} label="General / All" id="General" count={filteredEmails.length} />
+                <div className="flex-1 overflow-y-auto space-y-0.5 no-scrollbar px-2">
+                    <SidebarItem icon={Inbox} label="Inbox" id="General" count={filteredEmails.length} activeColor="bg-[#d3e3fd] text-[#001d35]" />
                     <SidebarItem icon={Star} label="Starred" id="Starred" count={emails.filter(e => e.isStarred).length} />
+                    <SidebarItem icon={Send} label="Sent" id="Sent" />
+                    <SidebarItem icon={Trash2} label="Trash" id="Trash" />
 
-                    <div className="pt-4 pb-2 px-4 text-xs font-bold text-textMuted uppercase flex items-center justify-between cursor-pointer hover:text-textPrimary" onClick={() => setExpandedLeads(!expandedLeads)}>
-                        <span>Leads Folders</span>
-                        {expandedLeads ? <ChevronDown size={14} /> : <ChevronRightIcon size={14} />}
+                    <div className="my-2 border-t border-gray-200 mx-2"></div>
+
+                    {/* LABELS SECTION */}
+                    <div className="px-4 py-2 flex items-center justify-between group/label">
+                        <span className="text-sm font-medium text-gray-700">Labels</span>
+                        <button
+                            onClick={() => {
+                                const newLabel = window.prompt("Enter new label name:");
+                                // In a real app, calling updateSettings via store would be better
+                                if (newLabel) {
+                                    // settingsStore.updateGeneralSettings({ availableLabels: [...availableLabels, newLabel] })
+                                    // For now, relies on it appearing if assigned. 
+                                    // To make it persist as "Available" we need API. 
+                                    // Mocked:
+                                    const current = generalSettings.availableLabels || [];
+                                    if (!current.includes(newLabel)) {
+                                        useSettingsStore.getState().updateGeneralSettings({ availableLabels: [...current, newLabel] });
+                                    }
+                                }
+                            }}
+                            className="p-1 hover:bg-gray-200 rounded opacity-0 group-hover/label:opacity-100 transition-opacity">
+                            <Plus size={14} />
+                        </button>
                     </div>
+                    {availableLabels.map(label => (
+                        <SidebarItem key={label} icon={Tag} label={label} id={label} />
+                    ))}
 
-                    {expandedLeads && (
-                        <>
-                            {statuses.map(status => {
-                                // Calculate Count: Email sender must exist in Leads AND match this Status AND match current Account filter
-                                const count = filteredEmails.filter(e => {
-                                    const l = leads.find(lead => lead.email.toLowerCase() === e.from.toLowerCase());
-                                    return l && l.status === status && !e.isRead;
-                                }).length;
+                    <div className="my-2 border-t border-gray-200 mx-2"></div>
 
-                                return (
-                                    <SidebarItem
-                                        key={status}
-                                        icon={Tag}
-                                        label={status}
-                                        id={status}
-                                        count={count}
-                                        indent
-                                    />
-                                );
-                            })}
-                        </>
-                    )}
+                    <div className="px-4 py-2 text-sm font-medium text-gray-700">Leads</div>
+                    {statuses.map(status => {
+                        const count = filteredEmails.filter(e => {
+                            const l = leads.find(lead => lead.email.toLowerCase() === e.from.toLowerCase());
+                            return l && l.status === status && !e.isRead;
+                        }).length;
+                        return (
+                            <SidebarItem
+                                key={status}
+                                icon={Briefcase}
+                                label={status}
+                                id={status}
+                                count={count}
+                                indent
+                            />
+                        );
+                    })}
 
-                    <div className="pt-4 pb-2 px-4 text-xs font-bold text-textMuted uppercase">Relationships</div>
+                    <div className="my-2 border-t border-gray-200 mx-2"></div>
                     <SidebarItem icon={Briefcase} label="Clients" id="Clients" count={filteredEmails.filter(e => clients.some(c => c.email === e.from) && !e.isRead).length} />
                 </div>
             </div>
 
             {/* 2. EMAIL LIST */}
-            <div className={`flex flex-col border-r border-border w-80 xl:w-96 shrink-0 bg-white ${selectedEmailId ? 'hidden lg:flex' : 'flex w-full'}`}>
-                <div className="h-16 border-b border-border flex items-center px-4 gap-2">
-                    <div className="relative flex-1">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-textMuted" size={16} />
-                        <input
-                            type="text"
-                            placeholder="Search mail"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 bg-slate-100 border-transparent rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-primary outline-none transition-all"
-                        />
+            <div className={`flex flex-col bg-white flex-1 min-w-0 ${selectedEmailId ? 'hidden' : 'flex'}`}>
+                {/* Gmail-style Toolbar */}
+                <div className="border-b border-gray-200 bg-white/95 backdrop-blur z-10 sticky top-0 flex flex-col">
+                    <div className="h-14 flex items-center justify-between px-4">
+                        <div className="flex items-center gap-2 flex-1 max-w-3xl">
+                            <div className="relative w-full max-w-xl group">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-600" size={20} />
+                                <input
+                                    type="text"
+                                    placeholder="Search in mail"
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    className="w-full pl-12 pr-4 py-3 bg-[#eaf1fb] border-transparent rounded-[24px] text-[16px] focus:bg-white focus:shadow-md focus:border-transparent outline-none transition-all placeholder-gray-600"
+                                />
+                                <button className="absolute right-3 top-1/2 -translate-y-1/2 bg-gray-200 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Filter size={16} />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3 text-gray-600">
+                            {/* PAGINATION CONTROLS */}
+                            <div className="flex items-center gap-2 mr-4 text-sm text-gray-500">
+                                <span>{(currentPage - 1) * itemsPerPage + 1}-{Math.min(currentPage * itemsPerPage, filteredEmails.length)} of {filteredEmails.length}</span>
+                                <button
+                                    disabled={currentPage === 1}
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    className="p-1 hover:bg-gray-100 rounded disabled:opacity-30">
+                                    <ArrowLeft size={16} />
+                                </button>
+                                <button
+                                    disabled={currentPage * itemsPerPage >= filteredEmails.length}
+                                    onClick={() => setCurrentPage(p => p + 1)}
+                                    className="p-1 hover:bg-gray-100 rounded disabled:opacity-30">
+                                    <ArrowRight size={16} />
+                                </button>
+                            </div>
+
+                            <button onClick={async () => { await syncEmails(); fetchEmails(selectedAccountId); }} className="p-2 hover:bg-gray-100 rounded-full" title="Refresh">
+                                <RefreshCw size={20} className={refreshing ? 'animate-spin' : ''} />
+                            </button>
+                            <button className="p-2 hover:bg-gray-100 rounded-full">
+                                <SettingsIcon size={20} />
+                            </button>
+                        </div>
                     </div>
-                    <button onClick={async () => { await syncEmails(); fetchEmails(selectedAccountId); }} className="p-2 text-textMuted hover:bg-slate-100 rounded-full">
-                        <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
-                    </button>
+
+                    {/* SEARCH CHIPS (Hardcoded for now as placeholders for Advanced Search UI) */}
+                    <div className="flex gap-2 px-4 pb-2 overflow-x-auto no-scrollbar">
+                        {['From', 'Any time', 'Has attachment', 'To', 'Is unread'].map(chip => (
+                            <button key={chip} className="px-3 py-1 border border-gray-200 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-50 whitespace-nowrap">
+                                {chip}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
-                {mailError && (
-                    <div className="mx-4 mt-3 mb-2 text-xs text-danger bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-                        {mailError}
-                    </div>
-                )}
-
-                <div className="flex-1 overflow-y-auto no-scrollbar">
-                    {filteredEmails.length === 0 ? (
-                        <div className="p-8 text-center text-textMuted">
-                            <Mail size={32} className="mx-auto mb-2 opacity-20" />
-                            <p className="text-sm">No emails in "{selectedFolder}"</p>
-                            {selectedAccountId !== 'all' && <p className="text-xs mt-1">for {currentAccount?.email}</p>}
+                <div className="flex-1 overflow-y-auto w-full">
+                    {paginatedEmails.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                            <p className="text-lg">No messages in "{selectedFolder}"</p>
+                            {selectedFolder === 'Trash' && (
+                                <button className="mt-4 px-4 py-2 text-blue-600 font-medium hover:bg-blue-50 rounded">Empty Trash Now</button>
+                            )}
                         </div>
                     ) : (
-                        filteredEmails.map(email => {
-                            const senderInfo = getSenderDetails(email);
-                            return (
-                                <div
-                                    key={email.id}
-                                    onClick={() => { setSelectedEmailId(email.id); markAsRead(email.id); }}
-                                    className={`p-4 border-b border-border cursor-pointer hover:shadow-sm transition-all group relative ${selectedEmailId === email.id ? 'bg-softMint/30 border-l-4 border-l-primary' : (!email.isRead ? 'bg-white border-l-4 border-l-black' : 'bg-slate-50/50 border-l-4 border-l-transparent')}`}
-                                >
-                                    <div className="flex justify-between items-start mb-1">
-                                        <h4 className={`text-sm truncate pr-6 ${!email.isRead ? 'font-bold text-textPrimary' : 'font-medium text-textSecondary'}`}>
-                                            {email.fromName || email.from}
-                                        </h4>
-                                        <span className={`text-[10px] whitespace-nowrap ${!email.isRead ? 'text-primary font-bold' : 'text-textMuted'}`}>
-                                            {new Date(email.timestamp).toLocaleDateString()}
-                                        </span>
-                                    </div>
+                        <table className="w-full table-fixed text-sm border-separate border-spacing-0">
+                            <tbody>
+                                {paginatedEmails.map(email => {
+                                    const senderInfo = getSenderDetails(email);
+                                    const isSelected = selectedEmailId === email.id;
 
-                                    <p className={`text-xs truncate mb-2 ${!email.isRead ? 'text-textPrimary font-semibold' : 'text-textSecondary'}`}>
-                                        {email.subject}
-                                    </p>
-                                    <p className="text-xs text-textMuted line-clamp-2">
-                                        {email.body.replace(/<[^>]+>/g, '')}
-                                    </p>
-
-                                    <div className="flex items-center gap-2 mt-3">
-                                        {senderInfo.type !== 'General' && (
-                                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${senderInfo.badgeColor}`}>
-                                                {senderInfo.type === 'Lead' ? (senderInfo.status || 'Lead') : 'Client'}
-                                            </span>
-                                        )}
-                                        {email.attachments && (
-                                            <div className="flex items-center gap-1 text-[10px] text-textMuted border border-border px-1.5 py-0.5 rounded bg-white">
-                                                <Paperclip size={10} /> {email.attachments.length}
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Hover Actions */}
-                                    <div className="absolute right-2 top-8 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1 bg-white/80 backdrop-blur-sm p-1 rounded shadow-sm">
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); deleteEmail(email.id); }}
-                                            className="p-1.5 hover:bg-red-50 text-textMuted hover:text-danger rounded"
+                                    return (
+                                        <tr
+                                            key={email.id}
+                                            onClick={() => { setSelectedEmailId(email.id); markAsRead(email.id); }}
+                                            className={`group cursor-pointer hover:shadow-md hover:z-20 relative transition-all border-b border-gray-100
+                                                ${!email.isRead ? 'bg-white font-semibold text-gray-900' : 'bg-gray-50/50 text-gray-600'}
+                                                ${isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'}
+                                            `}
                                         >
-                                            <Trash2 size={14} />
-                                        </button>
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); toggleStar(email.id); }}
-                                            className={`p-1.5 hover:bg-yellow-50 rounded ${email.isStarred ? 'text-yellow-400' : 'text-textMuted hover:text-yellow-400'}`}
-                                        >
-                                            <Star size={14} fill={email.isStarred ? "currentColor" : "none"} />
-                                        </button>
-                                    </div>
-                                </div>
-                            );
-                        })
+                                            {/* Checkbox & Star */}
+                                            <td className="w-12 py-3 pl-4 align-top border-b border-gray-100">
+                                                <div className="flex items-center gap-3">
+                                                    <input type="checkbox" className="w-4 h-4 border-gray-300 rounded focus:ring-0 cursor-pointer" onClick={(e) => e.stopPropagation()} />
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); toggleStar(email.id); }}
+                                                        className="text-gray-400 hover:text-yellow-400 focus:outline-none"
+                                                    >
+                                                        <Star size={18} fill={email.isStarred ? "#fbbc04" : "none"} className={email.isStarred ? "text-yellow-400" : ""} />
+                                                    </button>
+                                                </div>
+                                            </td>
+
+                                            {/* Sender */}
+                                            <td className={`w-48 py-3 px-2 truncate border-b border-gray-100 ${!email.isRead ? 'font-bold text-black' : ''}`}>
+                                                {selectedFolder === 'Sent' ? `To: ${email.to}` : (email.fromName || email.from)}
+                                            </td>
+
+                                            {/* Subject - Snippet */}
+                                            <td className="py-3 px-2 border-b border-gray-100">
+                                                <div className="flex items-center gap-2 truncate">
+                                                    {/* LABELS CHIPS */}
+                                                    {(email.labels || []).map(label => (
+                                                        <span key={label} className="px-1.5 py-0.5 rounded bg-gray-200 text-gray-700 text-[10px] font-medium border border-gray-300">
+                                                            {label}
+                                                        </span>
+                                                    ))}
+
+                                                    {senderInfo.type !== 'General' && (
+                                                        <span className={`px-2 py-0.5 rounded text-[11px] font-medium shrink-0 ${senderInfo.type === 'Lead' ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800'}`}>
+                                                            {senderInfo.type === 'Lead' ? senderInfo.status : 'Client'}
+                                                        </span>
+                                                    )}
+                                                    <span className={`${!email.isRead ? 'font-bold text-black' : ''} shrink-0`}>
+                                                        {email.subject}
+                                                    </span>
+                                                    <span className="text-gray-400 mx-1">-</span>
+                                                    <span className="text-gray-500 truncate font-normal">
+                                                        {email.body.replace(/<[^>]+>/g, '')}
+                                                    </span>
+                                                </div>
+                                            </td>
+
+                                            {/* Date */}
+                                            <td className={`w-32 py-3 pr-4 text-right text-xs border-b border-gray-100 ${!email.isRead ? 'font-bold text-black' : ''}`}>
+                                                {(() => {
+                                                    const date = new Date(email.timestamp);
+                                                    const now = new Date();
+                                                    const isToday = date.getDate() === now.getDate() && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+                                                    return isToday
+                                                        ? date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                                                        : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                                                })()}
+                                            </td>
+
+                                            {/* Hover Actions (Absolute Right) */}
+                                            <td className="w-0 p-0 border-b border-gray-100 relative">
+                                                <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 backdrop-blur pl-2 shadow-sm rounded-l">
+                                                    <button onClick={(e) => { e.stopPropagation(); deleteEmail(email.id); }} className="p-2 hover:bg-gray-200 rounded-full text-gray-600" title="Delete">
+                                                        <Trash2 size={18} />
+                                                    </button>
+                                                    <button onClick={(e) => { e.stopPropagation(); markAsRead(email.id); }} className="p-2 hover:bg-gray-200 rounded-full text-gray-600" title="Mark Unread">
+                                                        <Mail size={18} />
+                                                    </button>
+                                                    {/* Assign Label Button Mock */}
+                                                    <button onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const l = window.prompt("Assign label:", "Work");
+                                                        if (l) updateLabels(email.id, [...email.labels, l]);
+                                                    }} className="p-2 hover:bg-gray-200 rounded-full text-gray-600" title="Label">
+                                                        <Tag size={18} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
                     )}
                 </div>
             </div>
 
             {/* 3. EMAIL CONTENT / READING PANE */}
-            <div className={`flex-1 bg-white flex flex-col ${selectedEmailId ? 'flex' : 'hidden lg:flex'}`}>
+            <div className={`flex-1 bg-white flex flex-col ${selectedEmailId ? 'flex' : 'hidden'}`}>
                 {selectedEmail ? (
                     <>
                         {/* Toolbar */}
                         <div className="h-16 border-b border-border flex items-center justify-between px-6 bg-white shrink-0">
                             <div className="flex items-center gap-3 text-textSecondary">
                                 <button onClick={() => deleteEmail(selectedEmail.id)} className="p-2 hover:bg-slate-100 rounded-full" title="Delete">
+
                                     <Trash2 size={18} />
                                 </button>
                                 <button className="p-2 hover:bg-slate-100 rounded-full" title="Mark Unread">
@@ -468,37 +518,49 @@ const Mailbox: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Email Body */}
-                        <div className="flex-1 overflow-y-auto p-8 no-scrollbar">
-                            <div className="flex justify-between items-start mb-6">
-                                <h2 className="text-xl font-bold text-textPrimary leading-tight">{selectedEmail.subject}</h2>
-                                <div className="flex items-center gap-2">
-                                    {getSenderDetails(selectedEmail).type === 'Lead' && (
-                                        <span className="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-1 rounded">Lead: {getSenderDetails(selectedEmail).status}</span>
-                                    )}
-                                    {getSenderDetails(selectedEmail).type === 'Client' && (
-                                        <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-1 rounded">Active Client</span>
-                                    )}
-                                </div>
-                            </div>
+                        <div className="flex-1 overflow-y-auto p-4 no-scrollbar">
+                            {/* Thread View */}
+                            {(() => {
+                                // 1. Thread Logic: Find related emails (Subject matching)
+                                // Clean subject: remove Re:, Fwd:, [labels], etc.
+                                const cleanSubject = (s: string) => s.replace(/^(Re|Fwd): /i, '').trim();
+                                const currentSubject = cleanSubject(selectedEmail.subject);
 
-                            <div className="flex items-start gap-4 mb-8">
-                                <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-lg font-bold text-textSecondary">
-                                    {selectedEmail.fromName.charAt(0)}
-                                </div>
-                                <div className="flex-1">
-                                    <div className="flex justify-between items-baseline">
-                                        <h4 className="font-bold text-textPrimary">{selectedEmail.fromName} <span className="text-xs font-normal text-textMuted">&lt;{selectedEmail.from}&gt;</span></h4>
-                                        <span className="text-xs text-textMuted">{new Date(selectedEmail.timestamp).toLocaleString()}</span>
+                                const thread = emails
+                                    .filter(e => cleanSubject(e.subject) === currentSubject)
+                                    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+                                return thread.map((msg, index) => (
+                                    <div key={msg.id} className={`mb-6 ${index !== thread.length - 1 ? 'border-b border-gray-100 pb-6' : ''}`}>
+                                        <div className="flex justify-between items-start mb-4">
+                                            <h2 className="text-xl font-bold text-textPrimary leading-tight mb-1">{msg.subject}</h2>
+                                            <div className="flex items-center gap-2">
+                                                {getSenderDetails(msg).type === 'Lead' && (
+                                                    <span className="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-1 rounded">Lead: {getSenderDetails(msg).status}</span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-start gap-4 mb-4">
+                                            <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-lg font-bold text-textSecondary shrink-0">
+                                                {(msg.fromName || '?').charAt(0)}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex justify-between items-baseline flex-wrap">
+                                                    <h4 className="font-bold text-textPrimary mr-2">{msg.fromName} <span className="text-xs font-normal text-textMuted">&lt;{msg.from}&gt;</span></h4>
+                                                    <span className="text-xs text-textMuted whitespace-nowrap">{new Date(msg.timestamp).toLocaleString()}</span>
+                                                </div>
+                                                <p className="text-xs text-textSecondary truncate">to {msg.to || 'me'}</p>
+                                            </div>
+                                        </div>
+
+                                        <div
+                                            className="prose prose-sm max-w-none text-textPrimary"
+                                            dangerouslySetInnerHTML={{ __html: msg.body }}
+                                        />
                                     </div>
-                                    <p className="text-xs text-textSecondary">to {selectedEmail.to || 'me'}</p>
-                                </div>
-                            </div>
-
-                            <div
-                                className="prose prose-sm max-w-none text-textPrimary"
-                                dangerouslySetInnerHTML={{ __html: selectedEmail.body }}
-                            />
+                                ));
+                            })()}
 
                             {selectedEmail.attachments && selectedEmail.attachments.length > 0 && (
                                 <div className="mt-8 pt-4 border-t border-border">
