@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Settings = require('./server/models/Settings');
 const MailMessage = require('./server/models/MailMessage');
+const SyncState = require('./server/models/SyncState');
 require('dotenv').config({ path: './server/.env' }); // Adjust path if needed
 
 const run = async () => {
@@ -12,6 +13,10 @@ const run = async () => {
         const settings = await Settings.findOne({});
         console.log('--- Settings.mailboxSync ---');
         console.log(JSON.stringify(settings?.mailboxSync || [], null, 2));
+
+        const syncStates = await SyncState.find({});
+        console.log('--- SyncState Collection ---');
+        console.log(JSON.stringify(syncStates, null, 2));
 
         console.log('--- Settings.emailAccounts (IDs) ---');
         if (settings?.emailAccounts) {

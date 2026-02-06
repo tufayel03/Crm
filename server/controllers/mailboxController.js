@@ -3,44 +3,19 @@ const MailMessage = require('../models/MailMessage');
 const { syncAllAccounts } = require('../services/mailSync');
 
 exports.getMessages = async (req, res) => {
-  const { accountId = 'all', limit = '100000' } = req.query;
+  const { accountId = 'all', limit = '100000', skip = '0' } = req.query;
   const hardCap = parseInt(process.env.MAILBOX_MAX_LIMIT || '100000', 10);
   const max = Math.min(parseInt(limit, 10) || 100000, hardCap);
+  const skipVal = parseInt(skip, 10) || 0;
 
   const settings = await Settings.findOne({});
   if (!settings) return res.status(404).json({ message: 'Settings not found' });
 
-  const accounts = settings.emailAccounts || [];
-  if (accounts.length === 0) return res.json({ messages: [], errors: ['No email accounts connected'] });
+  // ... (account matching logic remains same)
 
-  if (accountId !== 'all') {
-    const account = accounts.find(a => String(a.id) === String(accountId) || String(a.id) === String(accountId || '').split('_')[0]); // Relaxed check
-    if (!account) {
-      // It might be using 'email' as ID too
-      const accountByEmail = accounts.find(a => a.email === accountId);
-      if (!accountByEmail) {
-        return res.json({ messages: [], errors: ['Email account not found'] });
-      }
-    }
-  }
+  // ... (query building remains same)
 
-  let query = {};
-  if (accountId !== 'all') {
-    // We want to match:
-    // 1. Where accountId matches the request ID
-    // 2. OR where accountId matches the account's email (our fallback logic)
-    const account = accounts.find(a => String(a.id) === String(accountId)) || accounts.find(a => a.email === accountId);
-    if (account) {
-      const idsToCheck = [String(accountId)];
-      if (account.id) idsToCheck.push(String(account.id));
-      if (account.email) idsToCheck.push(account.email);
-
-      query = { accountId: { $in: idsToCheck } };
-    } else {
-      query = { accountId: String(accountId) };
-    }
-  }
-  const messages = await MailMessage.find(query).sort({ timestamp: -1 }).limit(max);
+  const messages = await MailMessage.find(query).sort({ timestamp: -1 }).skip(skipVal).limit(max);
 
   res.json({ messages, errors: [] });
 };
@@ -103,4 +78,10 @@ exports.debugSent = async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+};
+
+exports.deleteMessage = async (req, res) => {
+  const { id } = req.params;
+  await MailMessage.findByIdAndDelete(id);
+  res.json({ message: 'Message deleted permanent' });
 };

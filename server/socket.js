@@ -64,7 +64,7 @@ const setupSocket = (app) => {
     });
   });
 
-  return server;
+  return { server, io };
 };
 
 module.exports = { setupSocket };

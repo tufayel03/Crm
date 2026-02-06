@@ -23,11 +23,26 @@ class MailSyncService {
     } catch (e) { }
   }
 
-  async start() {
+  async start(options = {}) {
+    this.io = options.io; // Store IO instance
     this.log('[MailSync] Starting service...');
     await this.syncAll();
-    // Start periodic failsafe sync every 5 minutes (in case IDLE dies)
-    setInterval(() => this.syncAll(), 5 * 60 * 1000);
+
+    // Start periodic failsafe sync (default 5m or configured)
+    const intervalMs = options.intervalMs || 5 * 60 * 1000;
+
+    // Use setTimeout loop to avoid unhandled rejection crashes from setInterval
+    const loop = async () => {
+      try {
+        await this.syncAll();
+      } catch (err) {
+        this.log('[MailSync] Interval Sync Error:', err.message);
+      } finally {
+        setTimeout(loop, intervalMs);
+      }
+    };
+
+    setTimeout(loop, intervalMs);
   }
 
   async syncAll() {
@@ -131,6 +146,12 @@ class MailSyncService {
       let uids = await client.search({ uid: searchCriteria }, { uid: true });
       this.log(`[MailSync] Found ${uids.length} UIDs for ${account.email}`);
 
+      // Track max available on server to update lastUid even if we skip all
+      if (uids.length > 0) {
+        const rawMax = Math.max(...uids);
+        if (rawMax > maxFoundUid) maxFoundUid = rawMax;
+      }
+
       // Filter out UIDs we might have locally (double safety)
       if (uids.length > 0) {
         const existing = await MailMessage.find({
@@ -138,7 +159,11 @@ class MailSyncService {
           imapUid: { $in: uids }
         }).select('imapUid').lean();
         const existingSet = new Set(existing.map(e => e.imapUid));
+        const originalCount = uids.length;
         uids = uids.filter(u => !existingSet.has(u));
+        if (originalCount !== uids.length) {
+          this.log(`[MailSync] Skipped ${originalCount - uids.length} existing UIDs.`);
+        }
       }
 
       if (uids.length > 0) {
@@ -235,6 +260,16 @@ class MailSyncService {
       { $set: emailParams },
       { upsert: true }
     );
+
+    // REAL-TIME PUSH
+    if (this.io) {
+      this.io.emit('email:new', {
+        ...emailParams,
+        id: emailParams.messageId, // Ensure frontend has some ID (though _id is better from DB, this is faster)
+        folder: emailParams.folder
+      });
+      this.log(`[MailSync] Emitted email:new for UID ${msg.uid}`);
+    }
   }
 
   buildConfig(account) {
@@ -254,6 +289,6 @@ class MailSyncService {
 const service = new MailSyncService();
 
 module.exports = {
-  startMailboxSync: () => service.start(),
+  startMailboxSync: (options) => service.start(options),
   syncAllAccounts: () => service.syncAll()
 };

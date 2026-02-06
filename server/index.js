@@ -80,26 +80,65 @@ app.use(notFound);
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
-const server = setupSocket(app);
+const { server, io } = setupSocket(app);
+
+// Global Crash Handling
+process.on('uncaughtException', (err) => {
+  console.error('[CRASH] Uncaught Exception:', err);
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    fs.appendFileSync(path.join(__dirname, 'sync_debug.log'), `[${new Date().toISOString()}] [CRASH] Uncaught Exception: ${err.stack}\n`);
+  } catch (e) { }
+  // In dev/nodemon, let it crash so it restarts? Or keep alive?
+  // Usually better to log and exit(1) so nodemon restarts.
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[CRASH] Unhandled Rejection:', reason);
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    fs.appendFileSync(path.join(__dirname, 'sync_debug.log'), `[${new Date().toISOString()}] [CRASH] Unhandled Rejection: ${reason instanceof Error ? reason.stack : reason}\n`);
+  } catch (e) { }
+  // process.exit(1); // unhandledRejection acts differently in some nodes
+});
 
 server.listen(PORT, async () => {
-  await ensureAdminUser();
-  // Always start sync
-  const intervalSeconds = parseInt(process.env.MAIL_SYNC_SECONDS || '5', 10);
-  startMailboxSync({ intervalMs: intervalSeconds * 1000 });
-  startCampaignRunner({ intervalMs: 30000, batchSize: 20 });
-  const uploadsDir = path.join(__dirname, 'uploads');
   try {
-    await fs.mkdir(uploadsDir, { recursive: true });
-  } catch {
-    // ignore
+    await ensureAdminUser();
+
+    // Start Mail Sync (Background Service) with IO
+    if (process.env.MAIL_SYNC_ENABLED !== 'false') {
+      console.log('Starting Mailbox Sync Service...');
+      const intervalSeconds = parseInt(process.env.MAIL_SYNC_SECONDS || '900', 10); // Still keep failsafe interval
+      startMailboxSync({ intervalMs: intervalSeconds * 1000, io }).catch(err => { // Pass IO instance
+        console.error('[Main] Mailbox Sync Start Failed:', err);
+      });
+    }
+
+    startCampaignRunner({ intervalMs: 30000, batchSize: 20 }).catch(err => {
+      console.error('[Main] Campaign Runner Start Failed:', err);
+    });
+
+    const uploadsDir = path.join(__dirname, 'uploads');
+    try {
+      await fs.mkdir(uploadsDir, { recursive: true });
+    } catch {
+      // ignore
+    }
+
+    const warnGb = parseFloat(process.env.UPLOADS_WARN_GB || '5');
+    const checkMinutes = parseInt(process.env.UPLOADS_CHECK_MINUTES || '60', 10);
+    startUploadsMonitor({
+      uploadsDir,
+      warnBytes: warnGb * 1024 * 1024 * 1024,
+      intervalMs: checkMinutes * 60 * 1000
+    });
+
+    console.log(`Server running on port ${PORT}`);
+  } catch (err) {
+    console.error('[Main] Server Startup Error:', err);
   }
-  const warnGb = parseFloat(process.env.UPLOADS_WARN_GB || '5');
-  const checkMinutes = parseInt(process.env.UPLOADS_CHECK_MINUTES || '60', 10);
-  startUploadsMonitor({
-    uploadsDir,
-    warnBytes: warnGb * 1024 * 1024 * 1024,
-    intervalMs: checkMinutes * 60 * 1000
-  });
-  console.log(`Server running on port ${PORT}`);
 });
