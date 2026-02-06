@@ -16,7 +16,7 @@ const EmailAccountSchema = new mongoose.Schema({
   useForCampaigns: { type: Boolean, default: false },
   useForClients: { type: Boolean, default: false },
   sentCount: { type: Number, default: 0 }
-}, { _id: false });
+});
 
 const SettingsSchema = new mongoose.Schema({
   emailAccounts: [EmailAccountSchema],

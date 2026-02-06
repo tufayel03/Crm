@@ -2,300 +2,258 @@ const { ImapFlow } = require('imapflow');
 const { simpleParser } = require('mailparser');
 const Settings = require('../models/Settings');
 const MailMessage = require('../models/MailMessage');
+const SyncState = require('../models/SyncState');
+const Lead = require('../models/Lead');
+const Client = require('../models/Client');
 
-const buildAccountConfig = (account) => {
-  const user = account.username || account.email;
-  const pass = account.password;
-  const host = account.imapHost || account.smtpHost || 'mail.privateemail.com';
-  const port = parseInt(account.imapPort || 993, 10);
-  const explicitStartTLS = account.imapStartTLS === true;
-  const inferredStartTLS = account.imapStartTLS === undefined && port === 143;
-  const startTLS = explicitStartTLS || inferredStartTLS;
-  const secure = startTLS ? false : (account.imapSecure !== undefined ? account.imapSecure : port === 993);
+const fs = require('fs');
+const path = require('path');
 
-  if (!user || !pass) {
-    throw new Error('IMAP credentials missing for this account');
+class MailSyncService {
+  constructor() {
+    this.activeConnections = new Map(); // email -> client
+    this.syncLocks = new Set(); // email
   }
 
-  return { host, port, secure, doSTARTTLS: startTLS, auth: { user, pass } };
-};
-
-const fetchMessagesForAccount = async (account, limit = 1000, lastUid = 0) => {
-  const config = buildAccountConfig(account);
-  console.log('[MailSync] Config:', { ...config, auth: { user: config.auth.user, pass: '***' } });
-
-
-  const client = new ImapFlow({
-    ...config,
-    socketTimeout: 60000,
-    greetingTimeout: 60000,
-    logger: false
-  });
-  let lastError = null;
-  client.on('error', (err) => {
-    lastError = err;
-    console.error('IMAP client error:', err?.message || err);
-  });
-  const results = [];
-
-  try {
-    await client.connect();
-    console.log(`[MailSync] Connected to ${account.email} at ${account.imapHost || 'default-host'}`);
-    const lock = await client.getMailboxLock('INBOX');
+  log(msg, data = '') {
+    const line = `[${new Date().toISOString()}] ${msg} ${data ? JSON.stringify(data) : ''}\n`;
+    console.log(msg, data);
     try {
-      const exists = client.mailbox.exists || 0;
-      console.log(`[MailSync] Mailbox has ${exists} messages.`);
-      if (exists === 0) return [];
+      fs.appendFileSync(path.join(__dirname, '../sync_debug.log'), line);
+    } catch (e) { }
+  }
 
-      const fetchByUids = async (uids) => {
-        if (!uids || uids.length === 0) return;
-        const existing = await MailMessage.find({ accountId: String(account.id), imapUid: { $in: uids } })
-          .select('imapUid')
-          .lean();
+  async start() {
+    this.log('[MailSync] Starting service...');
+    await this.syncAll();
+    // Start periodic failsafe sync every 5 minutes (in case IDLE dies)
+    setInterval(() => this.syncAll(), 5 * 60 * 1000);
+  }
+
+  async syncAll() {
+    const settings = await Settings.findOne({});
+    if (!settings || !settings.emailAccounts) return;
+
+    for (const account of settings.emailAccounts) {
+      this.ensureConnection(account);
+    }
+  }
+
+  async ensureConnection(account) {
+    if (this.activeConnections.has(account.email)) {
+      const client = this.activeConnections.get(account.email);
+      if (client.usable) return; // Already connected and good
+    }
+
+    // Connect
+    const config = this.buildConfig(account);
+    const client = new ImapFlow({
+      ...config,
+      logger: false,
+      emitLogs: false
+    });
+
+    client.on('error', (err) => {
+      console.error(`[MailSync] Error for ${account.email}:`, err.message);
+    });
+
+    client.on('exists', async (data) => {
+      console.log(`[MailSync] New email event for ${account.email}:`, data);
+      await this.syncAccount(account, client);
+    });
+
+    try {
+      await client.connect();
+      console.log(`[MailSync] IDLE connected for ${account.email}`);
+      this.log(`[MailSync] Capabilities for ${account.email}:`, Array.from(client.capabilities || []));
+
+      // Standard Open
+      await client.mailboxOpen('INBOX');
+      this.activeConnections.set(account.email, client);
+
+      // Initial Sync on Connect
+      await this.syncAccount(account, client);
+
+    } catch (err) {
+      console.error(`[MailSync] Connection failed for ${account.email}:`, err.message);
+      setTimeout(() => this.ensureConnection(account), 30000); // Retry in 30s
+    }
+  }
+
+  async syncAccount(account, providedClient = null) {
+    if (this.syncLocks.has(account.email)) return; // Already syncing
+    this.syncLocks.add(account.email);
+
+    let client = providedClient;
+    let ownClient = false;
+
+    try {
+      if (!client) {
+        // One-off connection if not IDLE
+        if (this.activeConnections.has(account.email)) {
+          client = this.activeConnections.get(account.email);
+        } else {
+          // Build one-off
+          ownClient = true;
+          const config = this.buildConfig(account);
+          client = new ImapFlow({ ...config, logger: false });
+          await client.connect();
+          await client.mailboxOpen('INBOX');
+        }
+      }
+
+      // Get Sync State
+      let state = await SyncState.findOne({ accountId: account.email });
+      if (!state) state = await SyncState.create({ accountId: account.email });
+
+      await SyncState.updateOne({ accountId: account.email }, { status: 'syncing' });
+
+      // Auto-Reset: If DB is empty but lastUid > 0, reset to 0
+      const msgCount = await MailMessage.countDocuments({ accountId: { $in: [account.id, account.email] } });
+      if (msgCount === 0 && (state.lastUid || 0) > 0) {
+        console.log(`[MailSync] DB empty for ${account.email}, resetting lastUid to 0.`);
+        state.lastUid = 0;
+        await SyncState.updateOne({ accountId: account.email }, { lastUid: 0 });
+      }
+
+      let lastUid = state.lastUid || 0;
+      let searchCriteria = '1:*';
+      if (lastUid > 0) {
+        searchCriteria = `${lastUid + 1}:*`;
+      }
+
+      this.log(`[MailSync] Searching ${account.email} range: ${searchCriteria}`);
+
+      // Fetch UIDs
+      let maxFoundUid = lastUid;
+      let count = 0;
+
+      let uids = await client.search({ uid: searchCriteria }, { uid: true });
+      this.log(`[MailSync] Found ${uids.length} UIDs for ${account.email}`);
+
+      // Filter out UIDs we might have locally (double safety)
+      if (uids.length > 0) {
+        const existing = await MailMessage.find({
+          accountId: { $in: [account.id, account.email] },
+          imapUid: { $in: uids }
+        }).select('imapUid').lean();
         const existingSet = new Set(existing.map(e => e.imapUid));
-        const newUids = uids.filter(uid => !existingSet.has(uid));
-        if (newUids.length === 0) return;
-
-        const chunkSize = 50;
-        for (let i = 0; i < newUids.length; i += chunkSize) {
-          const chunk = newUids.slice(i, i + chunkSize);
-          const uidRange = chunk.join(',');
-          const fetchOpts = { uid: true, flags: true, source: true, internalDate: true, envelope: true };
-          console.log(`[MailSync] Fetching UID set: ${uidRange}`);
-          for await (const msg of client.fetch(uidRange, fetchOpts)) {
-            console.log(`[MailSync] Processing msg UID: ${msg.uid}`);
-            const parsed = await simpleParser(msg.source);
-            const fromAddress = parsed.from?.value?.[0]?.address || '';
-            const fromName = parsed.from?.value?.[0]?.name || fromAddress;
-            const toAddress = parsed.to?.value?.[0]?.address || account.email;
-            const subject = parsed.subject || '(no subject)';
-            const html = parsed.html || parsed.textAsHtml || (parsed.text ? `<pre>${parsed.text}</pre>` : '');
-            const messageId = parsed.messageId || msg.envelope?.messageId || '';
-
-            results.push({
-              accountId: String(account.id),
-              accountEmail: account.email,
-              imapUid: msg.uid,
-              messageId,
-              from: fromAddress,
-              fromName,
-              to: toAddress,
-              subject,
-              body: html,
-              timestamp: parsed.date || msg.internalDate || new Date(),
-              isRead: (msg.flags instanceof Set ? msg.flags.has('\\Seen') : (msg.flags || []).includes('\\Seen')),
-              isStarred: (msg.flags instanceof Set ? msg.flags.has('\\Flagged') : (msg.flags || []).includes('\\Flagged')),
-              attachments: (parsed.attachments || []).map(a => ({
-                name: a.filename || 'attachment',
-                size: a.size ? `${Math.round(a.size / 1024)} KB` : 'unknown'
-              }))
-            });
-          }
-        }
-      };
-
-      try {
-        try {
-          let targetUids = [];
-
-          if (lastUid && lastUid > 0) {
-            // Optimized: Only ask for UIDs strictly greater than what we have
-            // IMAP range format: "start:*" means start to infinity (max)
-            const range = `${lastUid + 1}:*`;
-            console.log(`[MailSync] Optimized search for UIDs > ${lastUid} (Range: ${range})`);
-
-            let uids = await client.search({ uid: range }, { uid: true });
-            if (!Array.isArray(uids)) uids = [];
-            targetUids = uids.map(n => Number(n)).filter(n => !Number.isNaN(n)).sort((a, b) => a - b);
-
-            // If we found nothing, but maybe the server UID validity changed?
-            // For now, if nothing found, we assume no new mail.
-            // If the user reset their mailbox, they might need to resync or we handle "invalid messageset" error below.
-          } else {
-            // Initial Sync: Fetch all UIDs to determine the latest ones
-            console.log('[MailSync] Initial sync or reset: Fetching all UIDs');
-            let uids = await client.search({ all: true }, { uid: true });
-            if (!Array.isArray(uids)) uids = [];
-            const clean = uids.map(n => Number(n)).filter(n => !Number.isNaN(n)).sort((a, b) => a - b);
-            targetUids = clean.slice(-limit);
-          }
-
-          if (targetUids.length === 0) return [];
-          await fetchByUids(targetUids);
-        } catch (err) {
-          const message = String(err?.message || '');
-          const responseText = String(err?.responseText || '');
-          if (message.toLowerCase().includes('invalid messageset') || responseText.toLowerCase().includes('invalid messageset')) {
-            const uids = await client.search({ all: true }, { uid: true });
-            const clean = (uids || []).map(n => Number(n)).filter(n => !Number.isNaN(n)).sort((a, b) => a - b);
-            const targetUids = clean.slice(-limit);
-            await fetchByUids(targetUids);
-          } else {
-            throw err;
-          }
-        }
-      } finally {
-        lock.release();
+        uids = uids.filter(u => !existingSet.has(u));
       }
+
+      if (uids.length > 0) {
+        // CRITICAL: Sort Descending (Newest First)
+        uids.sort((a, b) => b - a);
+        this.log(`[MailSync] Downloading ${uids.length} new messages (Sorted Newest First)`);
+
+        // Download messages
+        for (const uid of uids) {
+          try {
+            // Fix: Use fetchOne with { uid: true } options to strictly treat the first arg as UID
+            // fetchOne(seq, query, options)
+            const message = await client.fetchOne(uid, { envelope: true, source: true, flags: true }, { uid: true });
+
+            if (message) {
+              await this.processMessage(account, message);
+              this.log(`[MailSync] Processed UID ${uid}`);
+            } else {
+              this.log(`[MailSync] UID ${uid} not found or failed fetch`);
+            }
+
+            if (uid > maxFoundUid) maxFoundUid = uid;
+            count++;
+
+            if (count % 10 === 0) this.log(`[MailSync] Processed ${count}/${uids.length} messages`);
+
+          } catch (e) {
+            this.log(`[MailSync] Failed to process msg ${uid}:`, e.message);
+          }
+        }
+
+
+      } else if (lastUid > 0) {
+        // Check if max UID on server is actually higher? 
+      }
+
+      // Update State
+      if (maxFoundUid > lastUid) {
+        await SyncState.updateOne({ accountId: account.email }, { lastUid: maxFoundUid, lastSyncAt: new Date(), status: 'idle', lastError: null });
+      } else {
+        await SyncState.updateOne({ accountId: account.email }, { lastSyncAt: new Date(), status: 'idle', lastError: null });
+      }
+
+      this.log(`[MailSync] Synced ${count} new messages for ${account.email}. LastUID: ${maxFoundUid}`);
+
     } catch (err) {
-      if (lastError) throw lastError;
-      throw err;
+      this.log(`[MailSync] Sync error ${account.email}:`, err.message);
+      if (err.response) this.log(`[MailSync] Server Response:`, err.response);
+      await SyncState.updateOne({ accountId: account.email }, { status: 'error', lastError: err.message });
     } finally {
-      await client.logout().catch(() => { });
+      this.syncLocks.delete(account.email);
+      if (ownClient) await client.logout();
     }
+  }
 
-    return results;
-  };
+  async processMessage(account, msg) {
+    const parsed = await simpleParser(msg.source);
 
-  const syncAccount = async (account, limit = 1000) => {
-    const settings = await Settings.findOne({});
-    const syncState = (settings?.mailboxSync || []).find(s => String(s.accountId) === String(account.id));
-    let lastUid = Number(syncState?.lastUid || 0);
-    if (Number.isNaN(lastUid) || lastUid < 0) lastUid = 0;
-
-    let messages = [];
-    try {
-      messages = await fetchMessagesForAccount(account, limit, lastUid);
-    } catch (err) {
-      const message = String(err?.message || '');
-      const responseText = String(err?.responseText || '');
-      if (message.toLowerCase().includes('invalid messageset') || responseText.toLowerCase().includes('invalid messageset')) {
-        if (settings) {
-          const nextSync = settings.mailboxSync || [];
-          const idx = nextSync.findIndex(s => String(s.accountId) === String(account.id));
-          const entry = { accountId: String(account.id), lastUid: 0, lastSyncAt: new Date() };
-          if (idx >= 0) nextSync[idx] = { ...nextSync[idx], ...entry };
-          else nextSync.push(entry);
-          settings.mailboxSync = nextSync;
-          await settings.save();
-        }
-        messages = await fetchMessagesForAccount(account, limit, 0);
-      } else {
-        throw err;
-      }
-    }
-    if (messages.length === 0) return 0;
-
-
-    // Import models inside the function or top level to ensure they are available
-    // (Already imported at top)
-    const Lead = require('../models/Lead');
-    const Client = require('../models/Client');
-
-    let maxUid = lastUid;
-    for (const msg of messages) {
-      if (msg.imapUid && msg.imapUid > maxUid) maxUid = msg.imapUid;
-      // Determine Folder Logic
-      let folder = 'General';
-      const email = msg.from.toLowerCase();
-
-      // 1. Check Clients
-      const client = await Client.findOne({ email: { $regex: new RegExp(`^${email}$`, 'i') } });
-      if (client) {
-        folder = 'Clients';
-      } else {
-        // 2. Check Leads
-        const lead = await Lead.findOne({ email: { $regex: new RegExp(`^${email}$`, 'i') } });
-        if (lead) {
-          if (lead.status === 'Contacted') {
-            folder = 'Contacted';
-          } else if (lead.status === 'New') {
-            folder = 'New';
-          } else {
-            // If lead exists but status is other, maybe default to General or keep status name?
-            // User requirement: "if email has new satus then it goes to new folder"
-            // "if ... contacted status then it goes to contacted folder"
-            // "other all email goes to general" -> potentially implies other statuses go to General?
-            // But usually we want to group by status. For now, let's respect the explicit rules.
-            folder = 'General';
-            // Optional: You could use lead.status if you want dynamic folders for all statuses
-            // folder = lead.status;
-          }
-        }
-      }
-
-      // 3. Prevent Overwriting TRASH or SENT
-      // We need to check if the message already exists and has a restricted folder
-      const existingMsg = await MailMessage.findOne({ accountId: msg.accountId, imapUid: msg.imapUid }).select('folder');
-
-      if (existingMsg) {
-        if (existingMsg.folder === 'TRASH' || existingMsg.folder === 'SENT') {
-          msg.folder = existingMsg.folder;
-          // If it was trash, we might want to keep it read? Or update other flags?
-          // For now, just preserving the folder is key.
-        } else if (existingMsg.folder !== 'General' && folder === 'General') {
-          // Optional: If user manually moved to a custom folder (that is not Trash/Sent), 
-          // and our logic says "General", maybe we should preserve the custom folder too?
-          // For now, let's strictly protect TRASH and SENT.
-          // If we want to persist ALL manual moves, we should prioritize existing folder unless it was 'General'.
-          if (existingMsg.folder && existingMsg.folder !== 'General') {
-            msg.folder = existingMsg.folder;
-          }
-        }
-      } else {
-        msg.folder = folder;
-      }
-
-      await MailMessage.updateOne(
-        { accountId: msg.accountId, imapUid: msg.imapUid },
-        { $set: msg },
-        { upsert: true }
-      );
-    }
-
-    if (settings) {
-      const nextSync = settings.mailboxSync || [];
-      const idx = nextSync.findIndex(s => String(s.accountId) === String(account.id));
-      const entry = { accountId: String(account.id), lastUid: maxUid, lastSyncAt: new Date() };
-      if (idx >= 0) nextSync[idx] = { ...nextSync[idx], ...entry };
-      else nextSync.push(entry);
-      settings.mailboxSync = nextSync;
-      await settings.save();
-    }
-
-    return messages.length;
-  };
-
-  const syncAllAccounts = async (limit = 1000) => {
-    const settings = await Settings.findOne({});
-    const accounts = settings?.emailAccounts || [];
-    if (accounts.length === 0) return { synced: 0, errors: [] };
-
-    let synced = 0;
-    const errors = [];
-    for (const account of accounts) {
-      try {
-        console.log(`[MailSync] Syncing account: ${account.email}`);
-        const count = await syncAccount(account, limit);
-        synced += count;
-        console.log(`[MailSync] Account ${account.email} synced ${count} messages.`);
-      } catch (err) {
-        console.error(`[MailSync] Error syncing ${account.email}:`, err);
-        errors.push(`Account ${account.email || account.id}: ${err.message || 'Sync failed'}`);
-      }
-    }
-
-    return { synced, errors };
-  };
-
-  const startMailboxSync = ({ intervalMs = 5 * 60 * 1000, limit = 1000 } = {}) => {
-    let running = false;
-
-    const tick = async () => {
-      if (running) return;
-      running = true;
-      try {
-        await syncAllAccounts(limit);
-      } catch (err) {
-        // Never crash the process for sync errors
-        console.error('Mailbox sync failed:', err?.message || err);
-      } finally {
-        running = false;
-      }
+    const emailParams = {
+      accountId: account.email, // Use email as robust ID
+      accountEmail: account.email,
+      imapUid: msg.uid,
+      messageId: parsed.messageId || msg.envelope?.messageId,
+      from: parsed.from?.value?.[0]?.address || '',
+      fromName: parsed.from?.value?.[0]?.name || parsed.from?.value?.[0]?.address,
+      to: parsed.to?.value?.[0]?.address || account.email,
+      subject: parsed.subject || '(no subject)',
+      body: parsed.html || parsed.textAsHtml || parsed.text,
+      timestamp: parsed.date || msg.internalDate || new Date(),
+      isRead: (msg.flags && msg.flags.has('\\Seen')),
+      isStarred: (msg.flags && msg.flags.has('\\Flagged')),
+      attachments: (parsed.attachments || []).map(a => ({
+        name: a.filename,
+        size: a.size ? Math.round(a.size / 1024) + ' KB' : '0 KB'
+      }))
     };
 
-    tick();
-    return setInterval(tick, intervalMs);
-  };
+    // Folder Logic (Simplified/Robust)
+    let folder = 'General';
 
-  module.exports = { syncAllAccounts, startMailboxSync };
+    // Auto-categorization
+    const fromEmail = emailParams.from.toLowerCase();
+    const client = await Client.findOne({ email: fromEmail });
+    if (client) folder = 'Clients';
+    else {
+      const lead = await Lead.findOne({ email: fromEmail });
+      if (lead) folder = lead.status === 'Contacted' ? 'Contacted' : (lead.status === 'New' ? 'New' : 'General');
+    }
+
+    emailParams.folder = folder;
+
+    await MailMessage.updateOne(
+      { accountId: account.email, imapUid: msg.uid },
+      { $set: emailParams },
+      { upsert: true }
+    );
+  }
+
+  buildConfig(account) {
+    return {
+      host: account.imapHost || 'mail.privateemail.com',
+      port: account.imapPort || 993,
+      secure: account.imapSecure !== false,
+      auth: {
+        user: account.username || account.email,
+        pass: account.password
+      }
+    };
+  }
+}
+
+// Singleton
+const service = new MailSyncService();
+
+module.exports = {
+  startMailboxSync: () => service.start(),
+  syncAllAccounts: () => service.syncAll()
+};

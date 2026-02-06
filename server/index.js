@@ -84,10 +84,9 @@ const server = setupSocket(app);
 
 server.listen(PORT, async () => {
   await ensureAdminUser();
-  if (process.env.MAILBOX_AUTO_SYNC === 'true') {
-    const intervalSeconds = parseInt(process.env.MAIL_SYNC_SECONDS || '5', 10);
-    startMailboxSync({ intervalMs: intervalSeconds * 1000 });
-  }
+  // Always start sync
+  const intervalSeconds = parseInt(process.env.MAIL_SYNC_SECONDS || '5', 10);
+  startMailboxSync({ intervalMs: intervalSeconds * 1000 });
   startCampaignRunner({ intervalMs: 30000, batchSize: 20 });
   const uploadsDir = path.join(__dirname, 'uploads');
   try {

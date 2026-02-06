@@ -13,11 +13,33 @@ exports.getMessages = async (req, res) => {
   const accounts = settings.emailAccounts || [];
   if (accounts.length === 0) return res.json({ messages: [], errors: ['No email accounts connected'] });
 
-  if (accountId !== 'all' && !accounts.find(a => String(a.id) === String(accountId))) {
-    return res.json({ messages: [], errors: ['Email account not found'] });
+  if (accountId !== 'all') {
+    const account = accounts.find(a => String(a.id) === String(accountId) || String(a.id) === String(accountId || '').split('_')[0]); // Relaxed check
+    if (!account) {
+      // It might be using 'email' as ID too
+      const accountByEmail = accounts.find(a => a.email === accountId);
+      if (!accountByEmail) {
+        return res.json({ messages: [], errors: ['Email account not found'] });
+      }
+    }
   }
 
-  const query = accountId === 'all' ? {} : { accountId: String(accountId) };
+  let query = {};
+  if (accountId !== 'all') {
+    // We want to match:
+    // 1. Where accountId matches the request ID
+    // 2. OR where accountId matches the account's email (our fallback logic)
+    const account = accounts.find(a => String(a.id) === String(accountId)) || accounts.find(a => a.email === accountId);
+    if (account) {
+      const idsToCheck = [String(accountId)];
+      if (account.id) idsToCheck.push(String(account.id));
+      if (account.email) idsToCheck.push(account.email);
+
+      query = { accountId: { $in: idsToCheck } };
+    } else {
+      query = { accountId: String(accountId) };
+    }
+  }
   const messages = await MailMessage.find(query).sort({ timestamp: -1 }).limit(max);
 
   res.json({ messages, errors: [] });
