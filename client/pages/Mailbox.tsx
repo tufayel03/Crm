@@ -616,6 +616,12 @@ const Mailbox: React.FC = () => {
                         </div>
                     </div>
 
+                    {refreshing && (
+                        <div className="h-1 w-full bg-slate-100">
+                            <div className="h-full w-full bg-blue-500 animate-pulse" />
+                        </div>
+                    )}
+
                     {/* SEARCH FILTERS */}
                     {isFilterOpen && (
                         <div className="px-4 pb-3">

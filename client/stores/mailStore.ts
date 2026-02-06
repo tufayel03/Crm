@@ -42,13 +42,29 @@ export const useMailStore = create<MailState>((set, get) => ({
   fetchEmails: async (accountId = 'all') => {
     set({ refreshing: true, error: null });
     try {
+      const cacheKey = `mailbox_cache_${accountId}`;
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        try {
+          const cachedData = JSON.parse(cached);
+          if (Array.isArray(cachedData)) {
+            set({ emails: cachedData });
+          } else if (Array.isArray(cachedData?.messages)) {
+            set({ emails: cachedData.messages });
+          }
+        } catch {
+          // ignore cache parse errors
+        }
+      }
       const data = await apiRequest<any>(`/api/v1/mailbox/messages?accountId=${encodeURIComponent(accountId)}&limit=100000`);
       if (Array.isArray(data)) {
+        localStorage.setItem(cacheKey, JSON.stringify(data));
         set({ emails: data, refreshing: false, error: null });
         return;
       }
       const messages = Array.isArray(data?.messages) ? data.messages : [];
       const errors = Array.isArray(data?.errors) ? data.errors.filter(Boolean) : [];
+      localStorage.setItem(cacheKey, JSON.stringify({ messages }));
       set({
         emails: messages,
         refreshing: false,
