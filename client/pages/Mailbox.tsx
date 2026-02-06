@@ -74,7 +74,7 @@ const Mailbox: React.FC = () => {
                 await syncEmails(100000, false, selectedAccountId);
             }
             await fetchEmails(selectedAccountId);
-        }, 30 * 60 * 1000);
+        }, 5 * 1000);
         return () => clearInterval(interval);
     }, [selectedAccountId, emailAccounts, fetchEmails, syncEmails, selectedFolder]);
 
