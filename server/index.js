@@ -118,9 +118,12 @@ server.listen(PORT, async () => {
       });
     }
 
-    startCampaignRunner({ intervalMs: 30000, batchSize: 20 }).catch(err => {
-      console.error('[Main] Campaign Runner Start Failed:', err);
-    });
+    const campaignRunner = startCampaignRunner({ intervalMs: 30000, batchSize: 20 });
+    if (campaignRunner && typeof campaignRunner.catch === 'function') {
+      campaignRunner.catch(err => {
+        console.error('[Main] Campaign Runner Start Failed:', err);
+      });
+    }
 
     const uploadsDir = path.join(__dirname, 'uploads');
     try {
