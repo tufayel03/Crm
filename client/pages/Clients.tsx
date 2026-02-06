@@ -334,8 +334,8 @@ const Clients: React.FC = () => {
         }
 
         // Map keys to standard format
-        const mappedData = jsonData.map((row: any) => {
-          const newRow: any = {};
+        const mappedData = jsonData.map((row: any, index: number) => {
+          const newRow: any = { serial: index + 1 };
           // Try different casing and common variations
           Object.keys(row).forEach(key => {
             const k = key.toLowerCase().trim();

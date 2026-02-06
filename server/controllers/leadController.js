@@ -162,15 +162,12 @@ exports.importLeads = async (req, res) => {
     const phone = data.phone ? String(data.phone).replace(/\D/g, '') : '';
     if (!email && !phone) continue;
 
-    const exists = await Lead.findOne({
-      $or: [
-        email ? { email } : null,
-        phone ? { phone: new RegExp(phone) } : null
-      ].filter(Boolean)
-    });
+    const emailExists = email ? await Lead.findOne({ email }) : null;
+    const phoneExists = !emailExists && phone ? await Lead.findOne({ phone: new RegExp(phone) }) : null;
 
-    if (exists) {
-      duplicates.push({ ...data, duplicate_reason: 'Email or phone exists' });
+    if (emailExists || phoneExists) {
+      const reason = emailExists ? `Email exists: ${email}` : `Phone exists: ${phone}`;
+      duplicates.push({ ...data, duplicate_reason: reason, serial: data.serial });
       continue;
     }
 
@@ -197,4 +194,3 @@ exports.importLeads = async (req, res) => {
 
   res.json({ added: created.length, duplicates });
 };
-

@@ -49,8 +49,12 @@ app.use(express.json({ limit: '95mb' }));
 app.use(express.urlencoded({ extended: false }));
 app.use(errorLogger);
 
-// Serve locally stored uploads
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Serve locally stored uploads with CORS allowed
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  setHeaders: (res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+  }
+}));
 
 // Route Imports
 app.use('/api/v1/auth', require('./routes/authRoutes'));

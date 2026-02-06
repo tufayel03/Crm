@@ -42,7 +42,7 @@ const Leads: React.FC = () => {
 
   // Filtering & Pagination State
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState<string[]>(['All']);
   const [agentFilter, setAgentFilter] = useState('All');
   const [outcomeFilter, setOutcomeFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
@@ -116,7 +116,7 @@ const Leads: React.FC = () => {
         (l.phone && String(l.phone).toLowerCase().includes(search.toLowerCase())) ||
         safeId.includes(search);
 
-      const matchesStatus = statusFilter === 'All' || l.status === statusFilter;
+      const matchesStatus = statusFilter.includes('All') || statusFilter.includes(l.status);
       const matchesAgent = agentFilter === 'All' || l.assignedAgentId === agentFilter;
       const matchesRole = role === 'agent' ? l.assignedAgentId === user?.id : true;
 
@@ -467,8 +467,8 @@ const Leads: React.FC = () => {
         }
 
         // Smart Column Mapping
-        const mappedData = jsonData.map((row: any) => {
-          const newRow: any = {};
+        const mappedData = jsonData.map((row: any, index: number) => {
+          const newRow: any = { serial: index + 1 };
           const notesParts: string[] = [];
 
           Object.keys(row).forEach(key => {
