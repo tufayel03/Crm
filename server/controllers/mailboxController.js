@@ -24,8 +24,30 @@ exports.getMessages = async (req, res) => {
 };
 
 exports.syncNow = async (req, res) => {
-  const { limit = 1000 } = req.body || {};
-  const result = await syncAllAccounts(Math.min(parseInt(limit, 10) || 1000, 10000));
+  const { limit = 100000, force = false, accountId } = req.body || {};
+  const hardCap = parseInt(process.env.MAILBOX_MAX_LIMIT || '100000', 10);
+  const safeLimit = Math.min(parseInt(limit, 10) || 100000, hardCap);
+
+  if (force) {
+    const settings = await Settings.findOne({});
+    if (settings) {
+      const nextSync = settings.mailboxSync || [];
+      if (accountId && accountId !== 'all') {
+        const idx = nextSync.findIndex(s => String(s.accountId) === String(accountId));
+        const entry = { accountId: String(accountId), lastUid: 0, lastSyncAt: new Date() };
+        if (idx >= 0) nextSync[idx] = { ...nextSync[idx], ...entry };
+        else nextSync.push(entry);
+      } else {
+        for (let i = 0; i < nextSync.length; i += 1) {
+          nextSync[i] = { ...nextSync[i], lastUid: 0, lastSyncAt: new Date() };
+        }
+      }
+      settings.mailboxSync = nextSync;
+      await settings.save();
+    }
+  }
+
+  const result = await syncAllAccounts(safeLimit);
   res.json(result);
 };
 

@@ -102,6 +102,14 @@ const fetchMessagesForAccount = async (account, limit = 1000, lastUid = 0) => {
         if (uids.length === 0) return [];
 
         let targetUids = [];
+        const maxServerUid = uids[uids.length - 1] || 0;
+        if (lastUid && lastUid > 0) {
+          // If server rolled back and lastUid is ahead of mailbox, reset
+          if (maxServerUid > 0 && lastUid > maxServerUid) {
+            lastUid = 0;
+          }
+        }
+
         if (lastUid && lastUid > 0) {
           targetUids = uids.filter(uid => uid > lastUid);
         } else {

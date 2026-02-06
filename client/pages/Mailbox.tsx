@@ -71,7 +71,7 @@ const Mailbox: React.FC = () => {
         fetchEmails(selectedAccountId);
         const interval = setInterval(async () => {
             if (selectedFolder !== 'Trash') {
-                await syncEmails();
+                await syncEmails(100000, false, selectedAccountId);
             }
             await fetchEmails(selectedAccountId);
         }, 30 * 60 * 1000);
@@ -597,7 +597,7 @@ const Mailbox: React.FC = () => {
                             <button
                                 onClick={async () => {
                                     if (selectedFolder !== 'Trash') {
-                                        await syncEmails();
+                                        await syncEmails(100000, true, selectedAccountId);
                                     }
                                     fetchEmails(selectedAccountId);
                                 }}

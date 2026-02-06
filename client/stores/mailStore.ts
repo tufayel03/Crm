@@ -22,7 +22,7 @@ interface MailState {
   refreshing: boolean;
   error: string | null;
   fetchEmails: (accountId?: string) => Promise<void>;
-  syncEmails: (limit?: number) => Promise<void>;
+  syncEmails: (limit?: number, force?: boolean, accountId?: string) => Promise<void>;
   clearMailbox: () => Promise<void>;
   sendEmail: (to: string, subject: string, body: string) => void;
   addEmail: (email: EmailMessage) => void;
@@ -75,9 +75,9 @@ export const useMailStore = create<MailState>((set, get) => ({
     }
   },
 
-  syncEmails: async (limit = 100000) => {
+  syncEmails: async (limit = 100000, force = false, accountId = 'all') => {
     try {
-      const res = await apiRequest<any>('/api/v1/mailbox/sync', { method: 'POST', body: JSON.stringify({ limit }) });
+      const res = await apiRequest<any>('/api/v1/mailbox/sync', { method: 'POST', body: JSON.stringify({ limit, force, accountId }) });
       const errors = Array.isArray(res?.errors) ? res.errors.filter(Boolean) : [];
       if (errors.length) {
         set({ error: errors.join(' | ') });
