@@ -18,8 +18,9 @@ const { startMailboxSync } = require('./services/mailSync');
 const { startCampaignRunner } = require('./services/campaignRunner');
 const { setupSocket } = require('./socket');
 
-// Load environment variables
-dotenv.config();
+// Load base env, then local overrides (ignored by git) for local development.
+dotenv.config({ path: path.join(__dirname, '.env') });
+dotenv.config({ path: path.join(__dirname, '.env.local'), override: true });
 
 // Connect to Database
 connectDB();
