@@ -10,6 +10,7 @@ const MailMessageSchema = new mongoose.Schema({
   accountEmail: String,
   folder: { type: String, default: 'INBOX' },
   imapUid: { type: Number, index: true },
+  clientRequestId: { type: String, sparse: true, unique: true },
   messageId: String,
   from: String,
   fromName: String,
@@ -25,7 +26,13 @@ const MailMessageSchema = new mongoose.Schema({
   openedAt: Date
 }, { timestamps: true });
 
-MailMessageSchema.index({ accountId: 1, imapUid: 1 }, { unique: true, sparse: true });
+MailMessageSchema.index(
+  { accountId: 1, imapUid: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { imapUid: { $type: 'number' } }
+  }
+);
 
 MailMessageSchema.set('toJSON', {
   virtuals: true,

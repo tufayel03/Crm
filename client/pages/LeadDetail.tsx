@@ -8,8 +8,10 @@ import { useClientsStore } from '../stores/clientsStore';
 import { useCampaignStore } from '../stores/campaignStore';
 import { useTeamStore } from '../stores/teamStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { useNotificationStore } from '../stores/notificationStore';
 import { maskValue } from '../utils/mockData';
 import { applyTemplateTokens, buildCompanyTokens } from '../utils/templateTokens';
+import { queueEmailInBackground } from '../utils/emailOutbox';
 import { 
   ArrowLeft, 
   Mail, 
@@ -40,9 +42,10 @@ const LeadDetail: React.FC = () => {
   const { user, role } = useAuthStore();
   const { createTask } = useTasksStore();
   const { convertLeadToClient, clients } = useClientsStore();
-  const { templates, sendSingleEmail } = useCampaignStore();
+  const { templates } = useCampaignStore();
   const { members, fetchMembers } = useTeamStore();
   const { generalSettings } = useSettingsStore();
+  const { addNotification } = useNotificationStore();
   
   const lead = leads.find(l => l.id === id);
   const isAlreadyClient = clients.some(c => c.leadId === id);
@@ -187,9 +190,13 @@ const LeadDetail: React.FC = () => {
     }
   };
 
-  const handleSendEmail = async (e: React.FormEvent) => {
+  const handleSendEmail = (e: React.FormEvent) => {
     e.preventDefault();
     if (!emailSubject || !emailBody) return;
+    if (!lead.email) {
+      addNotification('error', 'Lead email is missing.');
+      return;
+    }
     
     setIsSendingEmail(true);
     // Simple replacement for variables if not processed by template selection
@@ -204,17 +211,20 @@ const LeadDetail: React.FC = () => {
     let finalBody = applyTemplateTokens(emailBody, tokenData);
     const finalSubject = applyTemplateTokens(emailSubject, tokenData);
 
-    const success = await sendSingleEmail(lead.email, finalSubject, finalBody);
-    setIsSendingEmail(false);
-    
-    if (success) {
-        addNote(lead.id, `Email Sent: ${emailSubject}`, user?.name || 'System');
-        alert('Email sent successfully!');
-        setIsEmailModalOpen(false);
-        setEmailSubject('');
-        setEmailBody('');
-    } else {
-        alert('Failed to send email. Check your email settings.');
+    try {
+      queueEmailInBackground({
+        to: lead.email,
+        subject: finalSubject,
+        html: finalBody
+      });
+      addNote(lead.id, `Email queued: ${finalSubject}`, user?.name || 'System');
+      setIsEmailModalOpen(false);
+      setEmailSubject('');
+      setEmailBody('');
+    } catch (error: any) {
+      addNotification('error', error?.message || 'Failed to queue email.');
+    } finally {
+      setIsSendingEmail(false);
     }
   };
 

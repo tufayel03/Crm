@@ -10,7 +10,10 @@ const getBaseUrl = (override) => {
   );
 };
 
-const createTrackingId = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+const createTrackingId = () => {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID().replace(/-/g, '');
+  return crypto.randomBytes(16).toString('hex');
+};
 const getTrackingSecret = () => process.env.TRACKING_LINK_SECRET || process.env.JWT_SECRET || 'matlance-tracking-secret';
 const signClickTarget = (campaignId, trackingId, url) => {
   const payload = `${campaignId}:${trackingId}:${url}`;
@@ -25,6 +28,20 @@ const injectOpenPixel = (html = '', campaignId, trackingId, baseOverride) => {
 
   if (!html) return pixelTag;
   if (html.includes('data-track-open')) return html;
+  if (html.includes('</body>')) {
+    return html.replace('</body>', `${pixelTag}</body>`);
+  }
+  return `${html}${pixelTag}`;
+};
+
+const injectManualOpenPixel = (html = '', trackingId, baseOverride) => {
+  if (!trackingId) return html || '';
+  const baseUrl = getBaseUrl(baseOverride).replace(/\/$/, '');
+  const pixelUrl = `${baseUrl}/api/v1/track/manual/${encodeURIComponent(trackingId)}`;
+  const pixelTag = `<img src="${pixelUrl}" width="1" height="1" style="display:none;opacity:0" alt="" data-track-manual-open="1" />`;
+
+  if (!html) return pixelTag;
+  if (html.includes('data-track-manual-open')) return html;
   if (html.includes('</body>')) {
     return html.replace('</body>', `${pixelTag}</body>`);
   }
@@ -54,4 +71,11 @@ const wrapClickTracking = (html = '', campaignId, trackingId, baseOverride) => {
   });
 };
 
-module.exports = { injectOpenPixel, wrapClickTracking, createTrackingId, getBaseUrl, signClickTarget };
+module.exports = {
+  injectOpenPixel,
+  injectManualOpenPixel,
+  wrapClickTracking,
+  createTrackingId,
+  getBaseUrl,
+  signClickTarget
+};

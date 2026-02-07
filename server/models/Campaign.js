@@ -4,12 +4,13 @@ const EmailQueueItemSchema = new mongoose.Schema({
   leadId: String,
   leadName: String,
   leadEmail: String,
-  status: { type: String, enum: ['Pending', 'Sent', 'Failed'], default: 'Pending' },
+  status: { type: String, enum: ['Pending', 'Processing', 'Sent', 'Failed'], default: 'Pending' },
   sentAt: Date,
   sentBy: String,
   error: String,
   trackingId: { type: String, index: true },
-  openedAt: Date
+  openedAt: Date,
+  clickedAt: Date
 }, { _id: false });
 
 const CampaignSchema = new mongoose.Schema({

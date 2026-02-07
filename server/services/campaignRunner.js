@@ -59,6 +59,18 @@ const runBatchForCampaign = async (campaign, batchSize = 20) => {
 
   // Re-fetch campaign to get latest queue state (in case of concurrent edits)
   const freshCampaign = await Campaign.findById(campaign._id);
+  // Safety net: old/edited campaigns may have missing or duplicate IDs.
+  let queueChanged = false;
+  const seenTrackingIds = new Set();
+  for (const item of freshCampaign.queue) {
+    if (!item.trackingId || seenTrackingIds.has(item.trackingId)) {
+      item.trackingId = createTrackingId();
+      queueChanged = true;
+    }
+    seenTrackingIds.add(item.trackingId);
+  }
+  if (queueChanged) await freshCampaign.save();
+
   const pendingItems = freshCampaign.queue.filter(q => q.status === 'Pending').slice(0, safeBatchSize);
 
   if (pendingItems.length === 0) {

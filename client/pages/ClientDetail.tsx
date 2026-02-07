@@ -7,6 +7,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useTeamStore } from '../stores/teamStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useCampaignStore } from '../stores/campaignStore';
+import { useNotificationStore } from '../stores/notificationStore';
 import { ServiceSubscription, Payment } from '../types';
 import FileSection from '../components/clients/FileSection';
 import ServiceFormModal from '../components/clients/ServiceFormModal';
@@ -14,6 +15,7 @@ import { downloadClientExcel, downloadClientZip } from '../utils/exportHelpers';
 import { generateInvoicePDF } from '../utils/pdfGenerator';
 import { generateInvoiceId, getInvoiceDisplayId } from '../utils/invoiceId';
 import { applyTemplateTokens, buildCompanyTokens } from '../utils/templateTokens';
+import { queueEmailInBackground } from '../utils/emailOutbox';
 import { 
   ArrowLeft, 
   Mail, 
@@ -55,7 +57,8 @@ const ClientDetail: React.FC = () => {
   const { members } = useTeamStore();
   const { user, role } = useAuthStore();
   const { generalSettings } = useSettingsStore();
-  const { templates, sendSingleEmail } = useCampaignStore();
+  const { templates } = useCampaignStore();
+  const { addNotification } = useNotificationStore();
   
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   const [editingService, setEditingService] = useState<ServiceSubscription | undefined>(undefined);
@@ -314,9 +317,13 @@ const ClientDetail: React.FC = () => {
     }
   };
 
-  const handleSendEmail = async (e: React.FormEvent) => {
+  const handleSendEmail = (e: React.FormEvent) => {
     e.preventDefault();
     if (!emailSubject || !emailBody) return;
+    if (!client.email) {
+      addNotification('error', 'Client email is missing.');
+      return;
+    }
     
     setIsSendingEmail(true);
     // Simple replacement for variables
@@ -334,17 +341,20 @@ const ClientDetail: React.FC = () => {
     let finalBody = applyTemplateTokens(emailBody, tokenData);
     const finalSubject = applyTemplateTokens(emailSubject, tokenData);
 
-    const success = await sendSingleEmail(client.email, finalSubject, finalBody);
-    setIsSendingEmail(false);
-    
-    if (success) {
-        addClientNote(client.id, `Email Sent: ${emailSubject}`, user?.name || 'System');
-        alert('Email sent successfully!');
-        setIsEmailModalOpen(false);
-        setEmailSubject('');
-        setEmailBody('');
-    } else {
-        alert('Failed to send email. Check your email settings.');
+    try {
+      queueEmailInBackground({
+        to: client.email,
+        subject: finalSubject,
+        html: finalBody
+      });
+      addClientNote(client.id, `Email queued: ${finalSubject}`, user?.name || 'System');
+      setIsEmailModalOpen(false);
+      setEmailSubject('');
+      setEmailBody('');
+    } catch (error: any) {
+      addNotification('error', error?.message || 'Failed to queue email.');
+    } finally {
+      setIsSendingEmail(false);
     }
   };
 

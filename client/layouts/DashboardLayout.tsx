@@ -15,6 +15,7 @@ import { useCampaignStore } from '../stores/campaignStore';
 import { useServicesStore } from '../stores/servicesStore';
 import { useTeamStore } from '../stores/teamStore';
 import { useAuditStore } from '../stores/auditStore';
+import { processEmailOutbox } from '../utils/emailOutbox';
 
 const DashboardLayout: React.FC = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -86,6 +87,25 @@ const DashboardLayout: React.FC = () => {
     }, 30000);
     return () => clearInterval(interval);
   }, [isAuthenticated, fetchSettings, fetchLeads, fetchClients, fetchPayments, fetchTasks, fetchMeetings, fetchCampaigns, fetchTemplates, fetchMembers, fetchLogs, fetchPlans]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    void processEmailOutbox();
+
+    const retryInterval = setInterval(() => {
+      void processEmailOutbox();
+    }, 15000);
+
+    const handleOnline = () => {
+      void processEmailOutbox();
+    };
+
+    window.addEventListener('online', handleOnline);
+    return () => {
+      clearInterval(retryInterval);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [isAuthenticated]);
 
   useEffect(() => {
     const checkAccess = async () => {

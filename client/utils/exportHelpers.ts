@@ -5,6 +5,7 @@ import { Client, Payment, GeneralSettings } from '../types';
 import { createInvoiceDoc } from './pdfGenerator';
 import { getInvoiceDisplayId } from './invoiceId';
 import { addSheetFromObjects, downloadWorkbook } from './excelUtils';
+import { getAuthToken, withUploadToken } from './api';
 
 // Helper to convert data URL to Blob
 const dataURLToBlob = (dataURL: string) => {
@@ -87,19 +88,59 @@ export const downloadDuplicates = async (data: any[], type: 'leads' | 'clients')
   await downloadWorkbook(wb, `Matlance_${type}_Duplicates_${new Date().toISOString().split('T')[0]}.xlsx`);
 };
 
-// Helper to get Blob from URL (Data URL or HTTP)
+const resolveDocUrls = (doc: any): string[] => {
+  const urls: string[] = [];
+  if (doc?.url) urls.push(String(doc.url));
+  if (doc?.localPath) {
+    urls.push(`${window.location.origin}/uploads/${String(doc.localPath).replace(/^\/+/, '')}`);
+  }
+  return Array.from(new Set(urls.filter(Boolean)));
+};
+
+const isProtectedUploadUrl = (url: string): boolean => {
+  try {
+    const parsed = new URL(url, window.location.origin);
+    return parsed.pathname.startsWith('/uploads/');
+  } catch {
+    return false;
+  }
+};
+
+// Helper to get Blob from URL (Data URL or HTTP) with auth support for protected /uploads paths
 const getBlobFromUrl = async (url: string): Promise<Blob | null> => {
   try {
+    if (!url) return null;
     if (url.startsWith('data:')) {
       return dataURLToBlob(url);
     }
-    const response = await fetch(url);
+
+    const finalUrl = isProtectedUploadUrl(url) ? withUploadToken(url) : url;
+    const headers: Record<string, string> = {};
+
+    if (isProtectedUploadUrl(finalUrl)) {
+      const token = getAuthToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+    }
+
+    const response = await fetch(finalUrl, {
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
+      credentials: 'same-origin'
+    });
     if (!response.ok) throw new Error(`Failed to fetch ${url}`);
     return await response.blob();
   } catch (e) {
     console.error("Error fetching file blob", e);
     return null;
   }
+};
+
+const getBlobFromDoc = async (doc: any): Promise<Blob | null> => {
+  const candidates = resolveDocUrls(doc);
+  for (const url of candidates) {
+    const blob = await getBlobFromUrl(url);
+    if (blob) return blob;
+  }
+  return null;
 };
 
 export const downloadClientZip = async (client: Client) => {
@@ -120,8 +161,7 @@ export const downloadClientZip = async (client: Client) => {
   const invoicesFolder = root.folder("Invoices");
   if (invoicesFolder && client.invoices) {
     const promises = client.invoices.map(async doc => {
-      if (!doc.url) return;
-      const blob = await getBlobFromUrl(doc.url);
+      const blob = await getBlobFromDoc(doc);
       if (blob) invoicesFolder.file(doc.name, blob);
     });
     await Promise.all(promises);
@@ -131,8 +171,7 @@ export const downloadClientZip = async (client: Client) => {
   const docsFolder = root.folder("Documents");
   if (docsFolder && client.documents) {
     const promises = client.documents.map(async doc => {
-      if (!doc.url) return;
-      const blob = await getBlobFromUrl(doc.url);
+      const blob = await getBlobFromDoc(doc);
       if (blob) docsFolder.file(doc.name, blob);
     });
     await Promise.all(promises);
@@ -189,10 +228,8 @@ export const downloadBulkClientsZip = async (
           const invFolder = clientFolder.folder("Invoices");
           if (invFolder) {
             const promises = client.invoices.map(async doc => {
-              if (doc.url) {
-                const blob = await getBlobFromUrl(doc.url);
-                if (blob) invFolder.file(doc.name, blob);
-              }
+              const blob = await getBlobFromDoc(doc);
+              if (blob) invFolder.file(doc.name, blob);
             });
             await Promise.all(promises);
           }
@@ -203,10 +240,8 @@ export const downloadBulkClientsZip = async (
           const docFolder = clientFolder.folder("Documents");
           if (docFolder) {
             const promises = client.documents.map(async doc => {
-              if (doc.url) {
-                const blob = await getBlobFromUrl(doc.url);
-                if (blob) docFolder.file(doc.name, blob);
-              }
+              const blob = await getBlobFromDoc(doc);
+              if (blob) docFolder.file(doc.name, blob);
             });
             await Promise.all(promises);
           }

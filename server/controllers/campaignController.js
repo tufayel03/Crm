@@ -8,18 +8,38 @@ const Lead = require('../models/Lead');
 const Client = require('../models/Client');
 const { applyTemplateTokens } = require('../utils/templateTokens');
 
+const ensureUniqueTrackingIds = (queue = []) => {
+  const seen = new Set();
+  return queue.map((item) => {
+    const next = { ...item };
+    if (!next.trackingId || seen.has(next.trackingId)) {
+      next.trackingId = createTrackingId();
+    }
+    seen.add(next.trackingId);
+    return next;
+  });
+};
+
 exports.getCampaigns = async (req, res) => {
   const campaigns = await Campaign.find({}).sort({ createdAt: -1 });
   res.json(campaigns);
 };
 
 exports.createCampaign = async (req, res) => {
-  const campaign = await Campaign.create(req.body);
+  const payload = { ...req.body };
+  if (Array.isArray(payload.queue)) {
+    payload.queue = ensureUniqueTrackingIds(payload.queue);
+  }
+  const campaign = await Campaign.create(payload);
   res.status(201).json(campaign);
 };
 
 exports.updateCampaign = async (req, res) => {
-  const campaign = await Campaign.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  const updates = { ...req.body };
+  if (Array.isArray(updates.queue)) {
+    updates.queue = ensureUniqueTrackingIds(updates.queue);
+  }
+  const campaign = await Campaign.findByIdAndUpdate(req.params.id, updates, { new: true });
   if (!campaign) return res.status(404).json({ message: 'Campaign not found' });
   res.json(campaign);
 };
