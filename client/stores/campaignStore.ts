@@ -36,7 +36,7 @@ interface CampaignState {
   toggleCampaignStatus: (id: string, action: 'resume' | 'pause') => Promise<void>;
   startCampaignNow: (id: string) => Promise<void>;
   deleteCampaign: (id: string) => Promise<void>;
-  processQueueBatch: (batchSize?: number) => void;
+
   sendTestEmail: (templateId: string, email: string) => Promise<boolean>;
   sendSingleEmail: (to: string, subject: string, content: string, attachments?: File[], accountId?: string) => Promise<boolean>;
 
@@ -215,7 +215,15 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       return true;
     });
 
-    const queue: EmailQueueItem[] = recipients.map(l => ({
+    // Deduplicate by email
+    const uniqueRecipients = new Map();
+    recipients.forEach(l => {
+      if (!uniqueRecipients.has(l.email.toLowerCase())) {
+        uniqueRecipients.set(l.email.toLowerCase(), l);
+      }
+    });
+
+    const queue: EmailQueueItem[] = Array.from(uniqueRecipients.values()).map(l => ({
       leadId: l.id,
       leadName: l.name,
       leadEmail: l.email,
@@ -236,7 +244,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       targetOutcome: data.targetOutcome,
       targetServiceStatus: data.targetServiceStatus,
       targetServicePlan: data.targetServicePlan,
-      totalRecipients: recipients.length,
+      totalRecipients: uniqueRecipients.size,
       sentCount: 0,
       failedCount: 0,
       openCount: 0,
@@ -317,12 +325,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     set(state => ({ campaigns: state.campaigns.filter(c => c.id !== id) }));
   },
 
-  processQueueBatch: async () => {
-    const sending = get().campaigns.filter(c => c.status === 'Sending' || c.status === 'Queued');
-    for (const camp of sending) {
-      await apiRequest(`/api/v1/campaigns/${camp.id}/send`, { method: 'POST', body: JSON.stringify({ batchSize: 50 }) });
-    }
-  },
+
 
   sendTestEmail: async (templateId, email) => {
     const template = get().templates.find(t => t.id === templateId);

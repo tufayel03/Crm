@@ -25,7 +25,7 @@ const Leads: React.FC = () => {
     leads, statuses, outcomes,
     revealContact, addLead, updateLead, bulkDelete, bulkAssign, bulkStatusUpdate,
     addCustomStatus, removeCustomStatus, addOutcome, removeOutcome,
-    purgeAll, importLeads
+    importLeads
   } = useLeadsStore();
 
   const { role, user } = useAuthStore();
@@ -74,7 +74,7 @@ const Leads: React.FC = () => {
 
   // Confirmation Modals
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [isPurgeModalOpen, setIsPurgeModalOpen] = useState(false);
+
   const [statusToDelete, setStatusToDelete] = useState<string | null>(null);
   const [outcomeToDelete, setOutcomeToDelete] = useState<string | null>(null);
 
@@ -293,14 +293,7 @@ const Leads: React.FC = () => {
     }
   };
 
-  const handlePurgeAll = () => {
-    setIsPurgeModalOpen(true);
-  };
 
-  const confirmPurgeAll = async () => {
-    await purgeAll();
-    setIsPurgeModalOpen(false);
-  };
 
   // --- Add/Remove Status Handler ---
   const handleAddStatus = (e: React.FormEvent) => {
@@ -592,11 +585,7 @@ const Leads: React.FC = () => {
                   {isImporting ? 'Processing...' : 'Import'}
                 </button>
               )}
-              {canManage && (
-                <button onClick={handlePurgeAll} className="px-4 py-2 border border-danger text-danger font-semibold rounded-xl hover:bg-red-50 transition-all flex items-center gap-2">
-                  <Trash2 size={18} /> Purge All
-                </button>
-              )}
+
             </>
           )}
           {canManage && (
@@ -779,36 +768,7 @@ const Leads: React.FC = () => {
         </div>
       )}
 
-      {/* Purge All Confirmation Modal */}
-      {isPurgeModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
-            <div className="flex items-center gap-3 mb-4 text-danger">
-              <div className="p-2 bg-red-100 rounded-full">
-                <AlertTriangle size={24} />
-              </div>
-              <h3 className="font-bold text-lg text-textPrimary">Purge All Data?</h3>
-            </div>
-            <p className="text-textSecondary text-sm mb-6 leading-relaxed">
-              WARNING: This will permanently delete <span className="font-bold text-danger">ALL LEADS</span> entirely from the database. This action is irreversible.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setIsPurgeModalOpen(false)}
-                className="flex-1 py-3 border border-border text-textPrimary font-bold rounded-xl hover:bg-slate-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmPurgeAll}
-                className="flex-1 py-3 bg-danger text-white font-bold rounded-xl hover:bg-red-600 transition-colors shadow-lg shadow-red-100"
-              >
-                Yes, Purge All
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* Status Delete Confirmation Modal */}
       {statusToDelete && (

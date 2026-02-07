@@ -10,27 +10,85 @@ const { applyTemplateTokens } = require('../utils/templateTokens');
 const { buildInlineLogo } = require('../utils/inlineLogo');
 
 const runBatchForCampaign = async (campaign, batchSize = 20) => {
-  const pending = campaign.queue.filter(q => q.status === 'Pending');
-  if (pending.length === 0) {
-    campaign.status = 'Completed';
-    campaign.completedAt = campaign.completedAt || new Date();
-    await campaign.save();
+  // 1. Check Global Rate Limits
+  const settings = await Settings.findOne({});
+  const limits = settings?.campaignLimits || { hourly: 100, daily: 1000 };
+
+  const now = new Date();
+  const oneHourAgo = new Date(now - 60 * 60 * 1000);
+  const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);
+
+  // Aggregate total sent counts across ALL campaigns
+  const stats = await Campaign.aggregate([
+    { $unwind: "$queue" },
+    { $match: { "queue.status": "Sent", "queue.sentAt": { $gte: oneDayAgo } } },
+    {
+      $group: {
+        _id: null,
+        hourly: {
+          $sum: { $cond: [{ $gte: ["$queue.sentAt", oneHourAgo] }, 1, 0] }
+        },
+        daily: { $sum: 1 }
+      }
+    }
+  ]);
+
+  const currentUsage = stats[0] || { hourly: 0, daily: 0 };
+
+  if (currentUsage.hourly >= limits.hourly) {
+    console.log(`[CampaignRunner] Hourly limit reached (${currentUsage.hourly}/${limits.hourly}). Pausing.`);
     return;
   }
 
+  if (currentUsage.daily >= limits.daily) {
+    console.log(`[CampaignRunner] Daily limit reached (${currentUsage.daily}/${limits.daily}). Pausing.`);
+    return;
+  }
+
+  // Calculate remaining quota for this batch
+  const hourlyRemaining = limits.hourly - currentUsage.hourly;
+  const dailyRemaining = limits.daily - currentUsage.daily;
+  const safeBatchSize = Math.min(batchSize, hourlyRemaining, dailyRemaining);
+
+  if (safeBatchSize <= 0) return;
+
+  // 2. Atomic Locking: Find pending items and mark as "Processing"
+  // We use the campaign ID and filter for Pending items.
+  // Note: We can't limit the update easily with pure Mongoose updateMany + limit.
+  // So we fetch, slice, then update specific IDs.
+
+  // Re-fetch campaign to get latest queue state (in case of concurrent edits)
+  const freshCampaign = await Campaign.findById(campaign._id);
+  const pendingItems = freshCampaign.queue.filter(q => q.status === 'Pending').slice(0, safeBatchSize);
+
+  if (pendingItems.length === 0) {
+    if (freshCampaign.queue.every(q => q.status === 'Sent' || q.status === 'Failed')) {
+      freshCampaign.status = 'Completed';
+      freshCampaign.completedAt = new Date();
+      await freshCampaign.save();
+    }
+    return;
+  }
+
+  // Mark selected items as Processing
+  const targetTrackingIds = pendingItems.map(p => p.trackingId);
+  await Campaign.updateMany(
+    { _id: campaign._id },
+    { $set: { "queue.$[elem].status": 'Processing' } },
+    { arrayFilters: [{ "elem.trackingId": { $in: targetTrackingIds } }] }
+  );
+
+  // 3. Process the locked batch
   const template = campaign.templateId ? await EmailTemplate.findById(campaign.templateId) : null;
   const html = template?.htmlContent || campaign.previewText || '';
-  const settings = await Settings.findOne({});
   const general = settings?.generalSettings || {};
   const account = await getEmailAccount({ purpose: 'campaigns' });
 
-  const batch = pending.slice(0, batchSize);
   let sentCount = 0;
   let failedCount = 0;
 
-  for (const item of batch) {
+  for (const item of pendingItems) {
     try {
-      if (!item.trackingId) item.trackingId = createTrackingId();
       const lead = await Lead.findById(item.leadId).lean();
       const client = await Client.findOne({ leadId: item.leadId }).lean();
       const leadName = lead?.name || item.leadName || '';
@@ -67,6 +125,7 @@ const runBatchForCampaign = async (campaign, batchSize = 20) => {
       const baseUrl = general.publicTrackingUrl || '';
       const htmlWithPixel = injectOpenPixel(htmlWithTokens, campaign.id, item.trackingId, baseUrl);
       const htmlTracked = wrapClickTracking(htmlWithPixel, campaign.id, item.trackingId, baseUrl);
+
       await sendMail({
         to: item.leadEmail,
         subject,
@@ -75,35 +134,73 @@ const runBatchForCampaign = async (campaign, batchSize = 20) => {
         account,
         fromName: general.companyName || 'Matlance'
       });
-      item.status = 'Sent';
-      item.sentAt = new Date();
+
+      // Update item status to Sent
+      await Campaign.updateOne(
+        { _id: campaign._id },
+        {
+          $set: {
+            "queue.$[elem].status": 'Sent',
+            "queue.$[elem].sentAt": new Date()
+          },
+          $inc: { sentCount: 1 }
+        },
+        { arrayFilters: [{ "elem.trackingId": item.trackingId }] }
+      );
       sentCount++;
     } catch (e) {
-      item.status = 'Failed';
-      item.error = e.message;
-      item.sentAt = new Date();
+      console.error(`[Campaign] Failed to send to ${item.leadEmail}:`, e.message);
+      // Update item status to Failed
+      await Campaign.updateOne(
+        { _id: campaign._id },
+        {
+          $set: {
+            "queue.$[elem].status": 'Failed',
+            "queue.$[elem].error": e.message,
+            "queue.$[elem].sentAt": new Date()
+          },
+          $inc: { failedCount: 1 }
+        },
+        { arrayFilters: [{ "elem.trackingId": item.trackingId }] }
+      );
       failedCount++;
     }
   }
 
-  campaign.sentCount += sentCount;
-  campaign.failedCount += failedCount;
-
-  const remaining = campaign.queue.filter(q => q.status === 'Pending').length;
-  campaign.status = remaining === 0 ? 'Completed' : 'Sending';
-  if (remaining === 0) campaign.completedAt = new Date();
-
-  await campaign.save();
+  // 4. Final Cleanup / Status Check
+  const finalCheck = await Campaign.findById(campaign._id);
+  const remaining = finalCheck.queue.filter(q => q.status === 'Pending' || q.status === 'Processing').length;
+  if (remaining === 0) {
+    finalCheck.status = 'Completed';
+    finalCheck.completedAt = new Date();
+    await finalCheck.save();
+  } else {
+    // If we missed any stuck in processing (e.g. crash), they might need reset, but for now we assume loop continues
+    if (finalCheck.status !== 'Sending') {
+      finalCheck.status = 'Sending'; // Ensure it stays active if items remain
+      await finalCheck.save();
+    }
+  }
 };
 
 const processCampaigns = async (batchSize = 20) => {
+  // Find campaigns that are Queued or Sending
+  // Also check Scheduled campaigns that are due
+  const now = new Date();
+
+  // Activate scheduled campaigns
+  await Campaign.updateMany(
+    { status: 'Scheduled', scheduledAt: { $lte: now } },
+    { $set: { status: 'Queued' } }
+  );
+
   const campaigns = await Campaign.find({ status: { $in: ['Queued', 'Sending'] } });
   for (const campaign of campaigns) {
     await runBatchForCampaign(campaign, batchSize);
   }
 };
 
-const startCampaignRunner = ({ intervalMs = 30000, batchSize = 20 } = {}) => {
+const startCampaignRunner = ({ intervalMs = 60000, batchSize = 20 } = {}) => {
   let running = false;
   const tick = async () => {
     if (running) return;
@@ -116,8 +213,9 @@ const startCampaignRunner = ({ intervalMs = 30000, batchSize = 20 } = {}) => {
       running = false;
     }
   };
+  // Run immediately on start
   tick();
   return setInterval(tick, intervalMs);
 };
 
-module.exports = { startCampaignRunner };
+module.exports = { startCampaignRunner, runBatchForCampaign };

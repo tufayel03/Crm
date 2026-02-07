@@ -22,6 +22,7 @@ const Tasks = lazy(() => import('./pages/Tasks'));
 const Meetings = lazy(() => import('./pages/Meetings'));
 const EmailTemplates = lazy(() => import('./pages/EmailTemplates'));
 const Campaigns = lazy(() => import('./pages/BulkEmail'));
+const CampaignResults = lazy(() => import('./pages/CampaignResults'));
 const ServicePlans = lazy(() => import('./pages/ServicePlans'));
 const Payments = lazy(() => import('./pages/Payments'));
 const Settings = lazy(() => import('./pages/Settings'));
@@ -47,16 +48,16 @@ const App: React.FC = () => {
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
-          
+
           <Route element={<DashboardLayout />}>
             {/* Executive Dashboard - Restricted to Internal Team */}
             <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']}><Dashboard /></ProtectedRoute>} />
-            
+
             {/* Client Portal Routes */}
             <Route path="/portal" element={<ProtectedRoute allowedRoles={['client']}><ClientPortal /></ProtectedRoute>} />
             <Route path="/client-meetings" element={<ProtectedRoute allowedRoles={['client']}><ClientMeetings /></ProtectedRoute>} />
 
-            <Route path="/mailbox" element={<ProtectedRoute><Mailbox /></ProtectedRoute>} /> 
+            <Route path="/mailbox" element={<ProtectedRoute><Mailbox /></ProtectedRoute>} />
             <Route path="/analytics" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><Analytics /></ProtectedRoute>} />
             <Route path="/leads" element={<ProtectedRoute><Leads /></ProtectedRoute>} />
             <Route path="/leads/:id" element={<ProtectedRoute><LeadDetail /></ProtectedRoute>} />
@@ -67,9 +68,10 @@ const App: React.FC = () => {
             <Route path="/error-logs" element={<ProtectedRoute allowedRoles={['admin']}><ErrorLogs /></ProtectedRoute>} />
             <Route path="/tasks" element={<ProtectedRoute><Tasks /></ProtectedRoute>} />
             <Route path="/meetings" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']}><Meetings /></ProtectedRoute>} />
-            
+
             <Route path="/email-templates" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><EmailTemplates /></ProtectedRoute>} />
             <Route path="/campaigns" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><Campaigns /></ProtectedRoute>} />
+            <Route path="/campaigns/:id" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><CampaignResults /></ProtectedRoute>} />
             <Route path="/payments" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><Payments /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent', 'client']}><Settings /></ProtectedRoute>} />
           </Route>
