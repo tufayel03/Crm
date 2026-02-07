@@ -93,7 +93,19 @@ const runBatchForCampaign = async (campaign, batchSize = 20) => {
       const client = await Client.findOne({ leadId: item.leadId }).lean();
       const leadName = lead?.name || item.leadName || '';
       const leadFirstName = leadName ? leadName.split(' ')[0] : '';
-      const { logoHtml, attachments: logoAttachments } = buildInlineLogo(general);
+
+      // Only attach logo if the template actually uses it
+      // This prevents the logo from appearing as an attachment when not needed
+      const usesLogoToken = /{{\s*company_logo\s*}}/i.test(html);
+      let logoHtml = '';
+      let logoAttachments = [];
+
+      if (usesLogoToken) {
+        const logoResult = buildInlineLogo(general);
+        logoHtml = logoResult.logoHtml;
+        logoAttachments = logoResult.attachments;
+      }
+
       const primaryService = Array.isArray(client?.services) && client.services.length > 0
         ? (client.services.find(s => s.status === 'Active') || client.services[0])?.type || ''
         : '';
