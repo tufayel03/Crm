@@ -5,6 +5,7 @@ import {
   Table, Trash2, Eye, Download, File
 } from 'lucide-react';
 import { ClientDocument } from '../../types';
+import { withUploadToken } from '../../utils/api';
 
 interface FileSectionProps {
   title: string;
@@ -97,7 +98,7 @@ const FileSection: React.FC<FileSectionProps> = ({
               </div>
               <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                 <a 
-                    href={file.url} 
+                    href={withUploadToken(file.url)} 
                     target="_blank" 
                     rel="noreferrer" 
                     className="p-2 text-textSecondary hover:bg-slate-100 hover:text-primary rounded-lg transition-colors"
@@ -106,7 +107,7 @@ const FileSection: React.FC<FileSectionProps> = ({
                     <Eye size={16} />
                 </a>
                 <a 
-                    href={file.url} 
+                    href={withUploadToken(file.url)} 
                     download={file.name}
                     className="p-2 text-textSecondary hover:bg-slate-100 hover:text-darkGreen rounded-lg transition-colors"
                     title="Download"

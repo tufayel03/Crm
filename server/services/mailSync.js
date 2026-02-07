@@ -230,6 +230,13 @@ class MailSyncService {
 
   async processMessage(account, msg) {
     const parsed = await simpleParser(msg.source);
+    const escapeHtml = (input = '') => String(input)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+    const safeBody = escapeHtml(parsed.text || parsed.html || '').replace(/\n/g, '<br/>');
 
     const emailParams = {
       accountId: account.email, // Use email as robust ID
@@ -240,7 +247,7 @@ class MailSyncService {
       fromName: parsed.from?.value?.[0]?.name || parsed.from?.value?.[0]?.address,
       to: parsed.to?.value?.[0]?.address || account.email,
       subject: parsed.subject || '(no subject)',
-      body: parsed.html || parsed.textAsHtml || parsed.text,
+      body: safeBody,
       timestamp: parsed.date || msg.internalDate || new Date(),
       isRead: (msg.flags && msg.flags.has('\\Seen')),
       isStarred: (msg.flags && msg.flags.has('\\Flagged')),

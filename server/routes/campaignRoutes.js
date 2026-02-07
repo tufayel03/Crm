@@ -1,10 +1,10 @@
-﻿const express = require('express');
+const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/auth');
+const { protect, authorize } = require('../middleware/auth');
 const { getCampaigns, createCampaign, updateCampaign, deleteCampaign, sendCampaignBatch } = require('../controllers/campaignController');
 const asyncHandler = require('../utils/asyncHandler');
 
-router.use(protect);
+router.use(protect, authorize('admin', 'manager'));
 
 router.route('/')
   .get(asyncHandler(getCampaigns))
@@ -17,4 +17,3 @@ router.route('/:id')
 router.post('/:id/send', asyncHandler(sendCampaignBatch));
 
 module.exports = router;
-

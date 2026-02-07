@@ -1,7 +1,7 @@
-﻿const express = require('express');
+const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { protect } = require('../middleware/auth');
+const { protect, authorize } = require('../middleware/auth');
 const asyncHandler = require('../utils/asyncHandler');
 const {
   getClients,
@@ -23,10 +23,11 @@ const {
 } = require('../controllers/clientController');
 
 const upload = multer({
-  storage: multer.memoryStorage()
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 }
 });
 
-router.use(protect);
+router.use(protect, authorize('admin', 'manager', 'agent'));
 
 router.route('/')
   .get(asyncHandler(getClients))
@@ -34,7 +35,7 @@ router.route('/')
   .delete(asyncHandler(deleteClients));
 
 router.post('/convert', asyncHandler(convertLeadToClient));
-router.post('/import', asyncHandler(importClients));
+router.post('/import', authorize('admin', 'manager'), asyncHandler(importClients));
 
 router.route('/:id')
   .patch(asyncHandler(updateClient));

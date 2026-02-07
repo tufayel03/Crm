@@ -1,15 +1,14 @@
-﻿const express = require('express');
+const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/auth');
+const { protect, authorize } = require('../middleware/auth');
 const { getLogs, addLog, clearLogs } = require('../controllers/auditController');
 const asyncHandler = require('../utils/asyncHandler');
 
-router.use(protect);
+router.use(protect, authorize('admin', 'manager'));
 
 router.route('/')
   .get(asyncHandler(getLogs))
   .post(asyncHandler(addLog))
-  .delete(asyncHandler(clearLogs));
+  .delete(authorize('admin'), asyncHandler(clearLogs));
 
 module.exports = router;
-

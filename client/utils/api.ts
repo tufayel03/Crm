@@ -19,6 +19,20 @@ export const setAuthToken = (token: string | null) => {
   else localStorage.removeItem('matlance_token');
 };
 
+export const withUploadToken = (url?: string) => {
+  if (!url) return url || '';
+  try {
+    const token = getAuthToken();
+    if (!token) return url;
+    const parsed = new URL(url, window.location.origin);
+    if (!parsed.pathname.startsWith('/uploads/')) return url;
+    parsed.searchParams.set('token', token);
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+};
+
 export const apiRequest = async <T = any>(path: string, options: RequestInit = {}): Promise<T> => {
   const isForm = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const headers: Record<string, string> = {

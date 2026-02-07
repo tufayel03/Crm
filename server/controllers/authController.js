@@ -7,6 +7,13 @@ const Settings = require('../models/Settings');
 const { sendMail } = require('../utils/mailer');
 const { getEmailAccount } = require('../utils/emailAccounts');
 
+const getTrustedBaseUrl = (req) => {
+  if (process.env.APP_BASE_URL) return String(process.env.APP_BASE_URL).replace(/\/$/, '');
+  const allowed = (process.env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (allowed.length > 0) return allowed[0].replace(/\/$/, '');
+  return `${req.protocol}://${req.get('host')}`;
+};
+
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '7d' });
 };
@@ -132,7 +139,7 @@ exports.me = async (req, res) => {
 };
 
 exports.forgotPassword = async (req, res) => {
-  const { email, resetBaseUrl } = req.body;
+  const { email } = req.body;
   if (!email) return res.status(400).json({ message: 'Email is required' });
 
   const user = await User.findOne({ email: email.toLowerCase().trim() });
@@ -150,7 +157,7 @@ exports.forgotPassword = async (req, res) => {
   const companyName = settings?.generalSettings?.companyName || 'Matlance';
   const template = settings?.systemTemplates?.passwordReset || { subject: 'Reset Password', body: 'Reset your password here: {{link}}' };
 
-  const base = resetBaseUrl || process.env.APP_BASE_URL || '';
+  const base = getTrustedBaseUrl(req);
   const resetLink = `${base}/#/reset-password?token=${token}&email=${encodeURIComponent(user.email)}`;
 
   const subject = String(template.subject || 'Reset Password').replace('{{company_name}}', companyName);

@@ -1,20 +1,23 @@
 import { io, Socket } from 'socket.io-client';
+import { getAuthToken } from './api';
 
 let socket: Socket | null = null;
 
 const getSocketUrl = () => {
   const explicit = import.meta.env.VITE_SOCKET_URL;
   if (explicit) return explicit;
-  return '';
+  return window.location.origin;
 };
 
-export const connectSocket = (userId: string) => {
+export const connectSocket = (_userId: string) => {
   const url = getSocketUrl();
   if (!url) return null;
   if (socket) return socket;
-  socket = io(url, { transports: ['websocket'] });
-  socket.on('connect', () => {
-    socket?.emit('user:online', userId);
+  const token = getAuthToken();
+  if (!token) return null;
+  socket = io(url, {
+    transports: ['websocket'],
+    auth: { token }
   });
   return socket;
 };

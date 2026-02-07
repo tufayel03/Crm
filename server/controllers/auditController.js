@@ -6,7 +6,13 @@ exports.getLogs = async (req, res) => {
 };
 
 exports.addLog = async (req, res) => {
-  const log = await AuditLog.create(req.body);
+  const payload = req.body || {};
+  const log = await AuditLog.create({
+    userId: req.user ? String(req.user._id || req.user.id || '') : payload.userId,
+    userName: req.user ? req.user.name : payload.userName,
+    action: payload.action,
+    details: payload.details
+  });
   res.status(201).json(log);
 };
 

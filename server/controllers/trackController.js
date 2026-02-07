@@ -1,4 +1,5 @@
 const Campaign = require('../models/Campaign');
+const { signClickTarget } = require('../utils/tracking');
 
 const ONE_BY_ONE_GIF = Buffer.from(
   'R0lGODlhAQABAPAAAAAAAAAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==',
@@ -50,6 +51,7 @@ exports.manualOpen = async (req, res) => {
 exports.click = async (req, res) => {
   const { campaignId, trackingId } = req.params;
   const target = req.query.u;
+  const sig = req.query.sig;
 
   try {
     if (campaignId && trackingId) {
@@ -71,6 +73,21 @@ exports.click = async (req, res) => {
     decoded = decodeURIComponent(target);
   } catch {
     decoded = target;
+  }
+
+  const expectedSig = signClickTarget(campaignId, trackingId, decoded);
+  if (!sig || typeof sig !== 'string' || sig !== expectedSig) {
+    return res.redirect(302, '/');
+  }
+
+  let urlObj;
+  try {
+    urlObj = new URL(decoded);
+  } catch {
+    return res.redirect(302, '/');
+  }
+  if (!['http:', 'https:'].includes(urlObj.protocol)) {
+    return res.redirect(302, '/');
   }
 
   return res.redirect(302, decoded);

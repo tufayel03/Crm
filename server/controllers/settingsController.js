@@ -5,6 +5,13 @@ const IpResetToken = require('../models/IpResetToken');
 const { sendMail } = require('../utils/mailer');
 const { getEmailAccount } = require('../utils/emailAccounts');
 
+const getTrustedBaseUrl = (req) => {
+  if (process.env.APP_BASE_URL) return String(process.env.APP_BASE_URL).replace(/\/$/, '');
+  const allowed = (process.env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (allowed.length > 0) return allowed[0].replace(/\/$/, '');
+  return `${req.protocol}://${req.get('host')}`;
+};
+
 const DEFAULT_PERMISSIONS = {
   manager: {
     dashboard: { view: true, manage: true, export: true },
@@ -139,7 +146,7 @@ const consumeIpResetToken = async (token) => {
 };
 
 exports.requestIpReset = async (req, res) => {
-  const { email, resetBaseUrl } = req.body || {};
+  const { email } = req.body || {};
   if (!email) {
     return res.status(400).json({ message: 'Email is required' });
   }
@@ -159,7 +166,7 @@ exports.requestIpReset = async (req, res) => {
 
   const settings = await getOrCreateSettings();
   const companyName = settings?.generalSettings?.companyName || 'Matlance';
-  const base = resetBaseUrl || process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`;
+  const base = getTrustedBaseUrl(req);
   const resetLink = `${base}/api/v1/settings/ip-reset/confirm?token=${rawToken}`;
 
   const subject = `${companyName} - Emergency IP Reset`;

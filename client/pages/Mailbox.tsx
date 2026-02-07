@@ -7,7 +7,7 @@ import { useClientsStore } from '../stores/clientsStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useCampaignStore } from '../stores/campaignStore'; // Import Campaign Store for Templates
 import { applyTemplateTokens, buildCompanyTokens } from '../utils/templateTokens';
-import { apiRequest } from '../utils/api';
+import { apiRequest, getAuthToken } from '../utils/api';
 import {
     Inbox, Star, Send, Trash2, Search, MoreVertical,
     RefreshCw, ChevronLeft, ChevronRight, Paperclip,
@@ -54,6 +54,7 @@ const Mailbox: React.FC = () => {
     const [isSendingReply, setIsSendingReply] = useState(false);
     const [replyError, setReplyError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
+    const htmlToText = (value: string) => String(value || '').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
 
     // Reset pagination when folder/search changes
     useEffect(() => { setCurrentPage(1); setSelectedEmailIds([]); }, [selectedFolder, search, selectedAccountId, filterFrom, filterTo, filterUnreadOnly, filterHasAttachments, filterDateFrom, filterDateTo]);
@@ -78,7 +79,12 @@ const Mailbox: React.FC = () => {
         init();
 
         // Connect Socket
-        const socket = io('http://localhost:5000'); // Adjust URL for prod if needed
+        const token = getAuthToken();
+        const socketUrl = (import.meta as any).env?.VITE_SOCKET_URL || window.location.origin;
+        const socket = token
+            ? io(socketUrl, { auth: { token }, transports: ['websocket'] })
+            : null;
+        if (!socket) return;
 
         socket.on('connect', () => {
             console.log('Connected to Mail Push Server');
@@ -1023,10 +1029,9 @@ const Mailbox: React.FC = () => {
                                             </div>
                                         </div>
 
-                                        <div
-                                            className="prose prose-sm max-w-none text-textPrimary"
-                                            dangerouslySetInnerHTML={{ __html: msg.body }}
-                                        />
+                                        <div className="prose prose-sm max-w-none text-textPrimary whitespace-pre-wrap break-words">
+                                            {htmlToText(msg.body)}
+                                        </div>
                                     </div>
                                 ));
                             })()}

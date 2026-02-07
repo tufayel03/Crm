@@ -1,10 +1,10 @@
-﻿const express = require('express');
+const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/auth');
+const { protect, authorize } = require('../middleware/auth');
 const { getTasks, createTask, updateTask, deleteTask, deleteCompletedTasks } = require('../controllers/taskController');
 const asyncHandler = require('../utils/asyncHandler');
 
-router.use(protect);
+router.use(protect, authorize('admin', 'manager', 'agent'));
 
 router.route('/')
   .get(asyncHandler(getTasks))
@@ -18,4 +18,3 @@ router.route('/:id')
   .delete(asyncHandler(deleteTask));
 
 module.exports = router;
-

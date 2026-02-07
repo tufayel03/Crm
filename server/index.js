@@ -6,10 +6,12 @@ const compression = require('compression');
 const morgan = require('morgan');
 const path = require('path');
 const fs = require('fs/promises');
+const jwt = require('jsonwebtoken');
 const mongoSanitize = require('express-mongo-sanitize');
 const { startUploadsMonitor } = require('./utils/uploadsMonitor');
 const connectDB = require('./config/db');
 const { ensureAdminUser } = require('./config/seed');
+const User = require('./models/User');
 const { errorLogger } = require('./middleware/errorLogger');
 const { notFound, errorHandler } = require('./middleware/error');
 const { startMailboxSync } = require('./services/mailSync');
@@ -41,22 +43,41 @@ const isLocalNetwork = (origin) => {
 app.use(cors({
   origin: (origin, cb) => {
     if (isDev && isLocalNetwork(origin)) return cb(null, true);
-    if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) return cb(null, true);
+    if (!origin) return cb(null, true);
+    if (allowedOrigins.length > 0 && allowedOrigins.includes(origin)) return cb(null, true);
     return cb(new Error('Not allowed by CORS'));
   },
   credentials: true
 }));
 
-app.use(express.json({ limit: '95mb' }));
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '10mb' }));
 app.use(express.urlencoded({ extended: false }));
 app.use(errorLogger);
 
-// Serve locally stored uploads with CORS allowed
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
-  setHeaders: (res) => {
-    res.set('Access-Control-Allow-Origin', '*');
+const getRequestToken = (req) => {
+  const authHeader = req.headers.authorization || '';
+  if (authHeader.startsWith('Bearer ')) return authHeader.split(' ')[1];
+  if (req.query && typeof req.query.token === 'string') return req.query.token;
+  return null;
+};
+
+const uploadsAuth = async (req, res, next) => {
+  try {
+    const token = getRequestToken(req);
+    if (!token) return res.status(401).json({ message: 'Not authorized' });
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (!decoded || !decoded.id) return res.status(401).json({ message: 'Not authorized' });
+    const user = await User.findById(decoded.id).select('_id status');
+    if (!user || user.status === 'blocked' || user.status === 'pending') {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+    return next();
+  } catch {
+    return res.status(401).json({ message: 'Not authorized' });
   }
-}));
+};
+
+app.use('/uploads', uploadsAuth, express.static(path.join(__dirname, 'uploads')));
 
 // Route Imports
 app.use('/api/v1/auth', require('./routes/authRoutes'));

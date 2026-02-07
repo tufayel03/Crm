@@ -1,10 +1,10 @@
-﻿const express = require('express');
+const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/auth');
+const { protect, authorize } = require('../middleware/auth');
 const { getPayments, createPayment, updatePayment, deletePayment, bulkDeletePayments, sendInvoiceEmail } = require('../controllers/paymentController');
 const asyncHandler = require('../utils/asyncHandler');
 
-router.use(protect);
+router.use(protect, authorize('admin', 'manager', 'agent'));
 
 router.route('/')
   .get(asyncHandler(getPayments))
@@ -18,4 +18,3 @@ router.route('/:id')
 router.post('/:id/send-invoice', asyncHandler(sendInvoiceEmail));
 
 module.exports = router;
-

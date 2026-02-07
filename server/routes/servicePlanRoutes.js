@@ -4,7 +4,7 @@ const { protect, authorize } = require('../middleware/auth');
 const { getPlans, createPlan, updatePlan, deletePlan } = require('../controllers/servicePlanController');
 const asyncHandler = require('../utils/asyncHandler');
 
-router.use(protect);
+router.use(protect, authorize('admin', 'manager', 'agent'));
 
 router.route('/')
   .get(asyncHandler(getPlans))

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Download, Trash2, Upload, RefreshCw, Folder, FileText, CheckSquare, Square } from 'lucide-react';
-import { apiRequest } from '../../utils/api';
+import { apiRequest, withUploadToken } from '../../utils/api';
 
 interface FileItem {
   path: string;
@@ -307,7 +307,7 @@ const FileManager: React.FC = () => {
                   <div className="col-span-3 text-textSecondary">{new Date(file.modifiedAt).toLocaleString()}</div>
                   <div className="col-span-2 flex items-center justify-end gap-2">
                     <a
-                      href={file.url}
+                      href={withUploadToken(file.url)}
                       className="px-2 py-1 border border-border rounded text-xs font-bold text-textSecondary hover:bg-slate-50 flex items-center gap-1"
                       target="_blank"
                       rel="noreferrer"

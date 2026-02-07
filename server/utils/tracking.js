@@ -1,3 +1,5 @@
+const crypto = require('crypto');
+
 const getBaseUrl = (override) => {
   if (override) return override;
   return (
@@ -9,6 +11,11 @@ const getBaseUrl = (override) => {
 };
 
 const createTrackingId = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+const getTrackingSecret = () => process.env.TRACKING_LINK_SECRET || process.env.JWT_SECRET || 'matlance-tracking-secret';
+const signClickTarget = (campaignId, trackingId, url) => {
+  const payload = `${campaignId}:${trackingId}:${url}`;
+  return crypto.createHmac('sha256', getTrackingSecret()).update(payload).digest('hex');
+};
 
 const injectOpenPixel = (html = '', campaignId, trackingId, baseOverride) => {
   if (!campaignId || !trackingId) return html;
@@ -41,9 +48,10 @@ const wrapClickTracking = (html = '', campaignId, trackingId, baseOverride) => {
 
   return html.replace(/<a\s+[^>]*href\s*=\s*["']([^"']+)["'][^>]*>/gi, (match, href) => {
     if (!shouldTrack(href)) return match;
-    const trackedUrl = `${trackBase}?u=${encodeURIComponent(href)}`;
+    const sig = signClickTarget(campaignId, trackingId, href);
+    const trackedUrl = `${trackBase}?u=${encodeURIComponent(href)}&sig=${encodeURIComponent(sig)}`;
     return match.replace(href, trackedUrl);
   });
 };
 
-module.exports = { injectOpenPixel, wrapClickTracking, createTrackingId, getBaseUrl };
+module.exports = { injectOpenPixel, wrapClickTracking, createTrackingId, getBaseUrl, signClickTarget };

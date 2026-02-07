@@ -4,6 +4,14 @@ const { getNextSequence } = require('../utils/counter');
 const { generateUniqueShortId } = require('../utils/ids');
 
 const CONVERTED_STATUSES = ['Converted', 'Closed Won'];
+const AGENT_ROLE = 'agent';
+
+const getLeadScope = (req) => {
+  if (req.user && req.user.role === AGENT_ROLE) {
+    return { assignedAgentId: req.user.id };
+  }
+  return {};
+};
 
 const ensureClientForLead = async (lead) => {
   if (!lead) return;
@@ -35,10 +43,7 @@ const ensureClientForLead = async (lead) => {
 };
 
 exports.getLeads = async (req, res) => {
-  const filter = {};
-  if (req.user && req.user.role === 'agent') {
-    filter.assignedAgentId = req.user.id;
-  }
+  const filter = getLeadScope(req);
   const leads = await Lead.find(filter).sort({ createdAt: -1 });
   res.json(leads);
 };
@@ -58,6 +63,13 @@ exports.createLead = async (req, res) => {
   const readableId = await getNextSequence('lead');
   const shortId = await generateUniqueShortId(Lead, 'shortId');
 
+  const normalizedAssignedAgentId = req.user && req.user.role === AGENT_ROLE
+    ? req.user.id
+    : (assignedAgentId || '');
+  const normalizedAssignedAgentName = req.user && req.user.role === AGENT_ROLE
+    ? req.user.name
+    : (assignedAgentName || 'Unassigned');
+
   const lead = await Lead.create({
     readableId,
     shortId,
@@ -67,8 +79,8 @@ exports.createLead = async (req, res) => {
     phone,
     country,
     status: status || 'New',
-    assignedAgentId: assignedAgentId || '',
-    assignedAgentName: assignedAgentName || 'Unassigned',
+    assignedAgentId: normalizedAssignedAgentId,
+    assignedAgentName: normalizedAssignedAgentName,
     isRevealed: false,
     source
   });
@@ -77,7 +89,13 @@ exports.createLead = async (req, res) => {
 };
 
 exports.updateLead = async (req, res) => {
-  const lead = await Lead.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  const filter = { _id: req.params.id, ...getLeadScope(req) };
+  const updates = { ...(req.body || {}) };
+  if (req.user && req.user.role === AGENT_ROLE) {
+    delete updates.assignedAgentId;
+    delete updates.assignedAgentName;
+  }
+  const lead = await Lead.findOneAndUpdate(filter, updates, { new: true });
   if (!lead) return res.status(404).json({ message: 'Lead not found' });
   if (req.body && req.body.status && CONVERTED_STATUSES.includes(req.body.status)) {
     await ensureClientForLead(lead);
@@ -87,13 +105,13 @@ exports.updateLead = async (req, res) => {
 
 exports.deleteLeads = async (req, res) => {
   const { ids } = req.body;
-  await Lead.deleteMany({ _id: { $in: ids } });
-  res.json({ message: 'Leads removed' });
+  const result = await Lead.deleteMany({ _id: { $in: ids }, ...getLeadScope(req) });
+  res.json({ message: 'Leads removed', deletedCount: result.deletedCount || 0 });
 };
 
 exports.addNote = async (req, res) => {
   const { content, author } = req.body;
-  const lead = await Lead.findById(req.params.id);
+  const lead = await Lead.findOne({ _id: req.params.id, ...getLeadScope(req) });
   if (!lead) return res.status(404).json({ message: 'Lead not found' });
   lead.notes.push({
     id: Math.random().toString(36).substring(2, 9),
@@ -107,7 +125,7 @@ exports.addNote = async (req, res) => {
 
 exports.updateNote = async (req, res) => {
   const { content, author } = req.body;
-  const lead = await Lead.findById(req.params.id);
+  const lead = await Lead.findOne({ _id: req.params.id, ...getLeadScope(req) });
   if (!lead) return res.status(404).json({ message: 'Lead not found' });
   const note = (lead.notes || []).find(n => n.id === req.params.noteId);
   if (!note) return res.status(404).json({ message: 'Note not found' });
@@ -119,7 +137,7 @@ exports.updateNote = async (req, res) => {
 };
 
 exports.deleteNote = async (req, res) => {
-  const lead = await Lead.findById(req.params.id);
+  const lead = await Lead.findOne({ _id: req.params.id, ...getLeadScope(req) });
   if (!lead) return res.status(404).json({ message: 'Lead not found' });
   lead.notes = (lead.notes || []).filter(n => n.id !== req.params.noteId);
   await lead.save();
@@ -127,7 +145,11 @@ exports.deleteNote = async (req, res) => {
 };
 
 exports.revealContact = async (req, res) => {
-  const lead = await Lead.findByIdAndUpdate(req.params.id, { isRevealed: true }, { new: true });
+  const lead = await Lead.findOneAndUpdate(
+    { _id: req.params.id, ...getLeadScope(req) },
+    { isRevealed: true },
+    { new: true }
+  );
   if (!lead) return res.status(404).json({ message: 'Lead not found' });
   res.json(lead);
 };
