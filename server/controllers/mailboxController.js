@@ -11,9 +11,28 @@ exports.getMessages = async (req, res) => {
   const settings = await Settings.findOne({});
   if (!settings) return res.status(404).json({ message: 'Settings not found' });
 
-  // ... (account matching logic remains same)
+  // Filter by account
+  const validAccounts = settings.emailAccounts.map(acc => acc.email);
+  const accountEmails = settings.emailAccounts.map(acc => acc.email);
 
-  // ... (query building remains same)
+  let query = {};
+
+  if (accountId !== 'all') {
+    // Check if accountId matches an ID or Email
+    const matched = settings.emailAccounts.find(acc => acc.id === accountId || acc.email === accountId);
+    if (matched) {
+      query.accountId = { $in: [matched.id, matched.email] };
+    } else {
+      // If valid account requested but not found in settings, return empty
+      return res.json({ messages: [], errors: ['Account not found'] });
+    }
+  } else {
+    // Show all messages for configured accounts
+    // query.accountId = { $in: [...validAccounts, ...settings.emailAccounts.map(a => a.id)] };
+    // actually, we might want all messages even if account deleted? 
+    // For now, let's show all messages in DB.
+    query = {};
+  }
 
   const messages = await MailMessage.find(query).sort({ timestamp: -1 }).skip(skipVal).limit(max);
 

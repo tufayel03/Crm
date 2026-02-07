@@ -91,7 +91,16 @@ class MailSyncService {
 
     } catch (err) {
       console.error(`[MailSync] Connection failed for ${account.email}:`, err.message);
-      setTimeout(() => this.ensureConnection(account), 30000); // Retry in 30s
+      this.activeConnections.delete(account.email); // Ensure cleanup
+
+      // Preventing rapid retry loops with exponential backoff or similar could be better, 
+      // but fixed 30s is okay for now.
+      setTimeout(() => {
+        // Double check not already connected in meantime
+        if (!this.activeConnections.has(account.email)) {
+          this.ensureConnection(account);
+        }
+      }, 30000);
     }
   }
 
