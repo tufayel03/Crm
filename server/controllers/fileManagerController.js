@@ -111,14 +111,35 @@ exports.downloadFiles = async (req, res) => {
 exports.uploadFile = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'File required' });
+
+    // 1. File Type Validation (Extension)
+    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.zip', '.csv'];
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    if (!allowedExtensions.includes(ext)) {
+      return res.status(400).json({ message: 'File type not allowed' });
+    }
+
+    // 2. Filename Sanitization
     const folder = req.body.folder || '';
-    const safeName = String(req.file.originalname || 'file').replace(/[^\w.\-]+/g, '_');
+    // Remove all non-alphanumeric chars except dots, dashes, underscores
+    let safeName = String(req.file.originalname).replace(/[^a-zA-Z0-9.\-_]/g, '');
+    if (!safeName) safeName = 'file';
+
+    // Prevent double extension attacks (e.g. image.php.jpg) - simple check
+    // Actually, we rely on the final extension check above, but let's ensure the name ends with it.
+    if (!safeName.toLowerCase().endsWith(ext)) {
+      safeName += ext;
+    }
+
     const relativePath = path.join(folder, `${Date.now()}-${safeName}`);
     const { fullPath, safePath } = safeResolve(relativePath);
+
     await fs.mkdir(path.dirname(fullPath), { recursive: true });
     await fs.writeFile(fullPath, req.file.buffer);
+
     const stat = await fs.stat(fullPath);
     const baseUrl = `${req.protocol}://${req.get('host')}`;
+
     res.json({
       path: safePath.replace(/\\/g, '/'),
       name: safeName,

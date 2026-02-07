@@ -6,6 +6,7 @@ const compression = require('compression');
 const morgan = require('morgan');
 const path = require('path');
 const fs = require('fs/promises');
+const mongoSanitize = require('express-mongo-sanitize');
 const { startUploadsMonitor } = require('./utils/uploadsMonitor');
 const connectDB = require('./config/db');
 const { ensureAdminUser } = require('./config/seed');
@@ -27,6 +28,7 @@ app.set('trust proxy', 1);
 // Security & Performance Middleware
 app.use(helmet());
 app.use(compression());
+app.use(mongoSanitize());
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 const isDev = process.env.NODE_ENV !== 'production';
