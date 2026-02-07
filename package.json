@@ -5,9 +5,7 @@
         "client": "npm --prefix client run dev",
         "server": "npm --prefix server run dev",
         "install-all": "npm install && npm --prefix client install && npm --prefix server install",
-        "dev": "cross-env NODE_OPTIONS=--no-deprecation concurrently \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
-        "deploy:vps": "bash deploy/vps/deploy.sh",
-        "deploy:vps:bootstrap": "bash deploy/vps/bootstrap.sh"
+        "dev": "cross-env NODE_OPTIONS=--no-deprecation concurrently \"npm --prefix server run dev\" \"npm --prefix client run dev\""
     },
     "devDependencies": {
         "concurrently": "^8.2.2",
