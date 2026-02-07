@@ -23,9 +23,7 @@ exports.open = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
-  res.status(200).end(ONE_BY_ONE_GIF, 'binary');
-  res.setHeader('Expires', '0');
-  res.status(200).end(ONE_BY_ONE_GIF, 'binary');
+  return res.status(200).end(ONE_BY_ONE_GIF, 'binary');
 };
 
 const MailMessage = require('../models/MailMessage');
@@ -45,7 +43,7 @@ exports.manualOpen = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
-  res.status(200).end(ONE_BY_ONE_GIF, 'binary');
+  return res.status(200).end(ONE_BY_ONE_GIF, 'binary');
 };
 
 exports.click = async (req, res) => {
