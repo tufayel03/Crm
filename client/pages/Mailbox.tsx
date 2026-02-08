@@ -120,7 +120,13 @@ const Mailbox: React.FC = () => {
 
         // 0. Account Filter
         if (selectedAccountId !== 'all' && currentAccount) {
-            list = list.filter(e => e.to.toLowerCase() === currentAccount.email.toLowerCase());
+            const selectedId = String(currentAccount.id || '').toLowerCase();
+            const selectedEmail = String(currentAccount.email || '').toLowerCase();
+            list = list.filter(e => {
+                const msgAccountId = String((e as any).accountId || '').toLowerCase();
+                const msgAccountEmail = String((e as any).accountEmail || '').toLowerCase();
+                return msgAccountId === selectedId || msgAccountId === selectedEmail || msgAccountEmail === selectedEmail;
+            });
         }
 
         // 1. Global Search

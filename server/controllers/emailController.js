@@ -5,6 +5,18 @@ const { injectInlineLogo } = require('../utils/inlineLogo');
 const { createTrackingId, injectManualOpenPixel, getBaseUrl } = require('../utils/tracking');
 const MailMessage = require('../models/MailMessage');
 
+let syntheticSentUidCounter = 0;
+const nextSyntheticSentUid = () => {
+  syntheticSentUidCounter = (syntheticSentUidCounter + 1) % 1000;
+  // Keep synthetic UIDs negative so they never collide with real IMAP UIDs.
+  return -((Date.now() * 1000) + syntheticSentUidCounter);
+};
+
+const isLegacyImapUidDuplicate = (error) =>
+  error?.code === 11000 &&
+  typeof error?.message === 'string' &&
+  error.message.includes('accountId_1_imapUid_1');
+
 const normalizeRecipients = (to) => {
   const raw = Array.isArray(to) ? to : [to];
   const parts = raw
@@ -83,6 +95,7 @@ exports.sendEmail = async (req, res) => {
         accountId: account ? account.id : 'default',
         accountEmail: account ? account.email : (process.env.SMTP_USER || 'system'),
         folder: 'SENT',
+        imapUid: nextSyntheticSentUid(),
         messageId: `<${Date.now()}-${trackingId}@matlance.com>`,
         clientRequestId: requestIdForRecipient || undefined,
         from: account ? account.email : (process.env.SMTP_USER || 'system'),
@@ -95,7 +108,21 @@ exports.sendEmail = async (req, res) => {
         trackingId
       };
 
-      const msg = await MailMessage.create(payload);
+      let msg;
+      try {
+        msg = await MailMessage.create(payload);
+      } catch (createError) {
+        if (!isLegacyImapUidDuplicate(createError)) {
+          throw createError;
+        }
+
+        // Legacy DBs may still have old unique index behavior.
+        // Retry once with a fresh synthetic UID so send remains successful.
+        msg = await MailMessage.create({
+          ...payload,
+          imapUid: nextSyntheticSentUid()
+        });
+      }
       sentMessages.push(msg);
     } catch (error) {
       if (requestIdForRecipient && error?.code === 11000) {

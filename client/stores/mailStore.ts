@@ -3,6 +3,8 @@ import { apiRequest } from '../utils/api';
 
 export interface EmailMessage {
   id: string;
+  accountId?: string;
+  accountEmail?: string;
   from: string;
   fromName: string;
   to: string;

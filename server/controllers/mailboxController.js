@@ -21,7 +21,12 @@ exports.getMessages = async (req, res) => {
     // Check if accountId matches an ID or Email
     const matched = settings.emailAccounts.find(acc => acc.id === accountId || acc.email === accountId);
     if (matched) {
-      query.accountId = { $in: [matched.id, matched.email] };
+      query = {
+        $or: [
+          { accountId: { $in: [matched.id, matched.email] } },
+          { accountEmail: matched.email }
+        ]
+      };
     } else {
       // If valid account requested but not found in settings, return empty
       return res.json({ messages: [], errors: ['Account not found'] });
