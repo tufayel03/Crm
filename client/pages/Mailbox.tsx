@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import DOMPurify from 'dompurify';
 import { useMailStore, EmailMessage } from '../stores/mailStore';
 import { io } from 'socket.io-client';
 import { useLeadsStore } from '../stores/leadsStore';
@@ -54,7 +55,16 @@ const Mailbox: React.FC = () => {
     const [isSendingReply, setIsSendingReply] = useState(false);
     const [replyError, setReplyError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
-    const htmlToText = (value: string) => String(value || '').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
+    const sanitizeEmailHtml = (value: string) => {
+        const raw = String(value || '');
+        const hasHtmlTag = /<\w+[\s\S]*?>/i.test(raw);
+        const source = hasHtmlTag ? raw : raw.replace(/\n/g, '<br/>');
+
+        return DOMPurify.sanitize(source, {
+            FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'textarea', 'select'],
+            FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus']
+        });
+    };
 
     // Reset pagination when folder/search changes
     useEffect(() => { setCurrentPage(1); setSelectedEmailIds([]); }, [selectedFolder, search, selectedAccountId, filterFrom, filterTo, filterUnreadOnly, filterHasAttachments, filterDateFrom, filterDateTo]);
@@ -1035,8 +1045,11 @@ const Mailbox: React.FC = () => {
                                             </div>
                                         </div>
 
-                                        <div className="prose prose-sm max-w-none text-textPrimary whitespace-pre-wrap break-words">
-                                            {htmlToText(msg.body)}
+                                        <div className="max-w-none text-textPrimary break-words">
+                                            <div
+                                                className="[&_img]:max-w-full [&_table]:max-w-full [&_table]:h-auto"
+                                                dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(msg.body) }}
+                                            />
                                         </div>
                                     </div>
                                 ));
