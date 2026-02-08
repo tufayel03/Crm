@@ -6,15 +6,50 @@ const ONE_BY_ONE_GIF = Buffer.from(
   'base64'
 );
 
+const markQueueEventOnce = async ({ campaignId, trackingId, field, counterField }) => {
+  if (!campaignId || !trackingId) return false;
+
+  const unopenedCondition = {
+    $or: [
+      { [field]: { $exists: false } },
+      { [field]: null }
+    ]
+  };
+
+  const arrayFilter = {
+    'elem.trackingId': trackingId,
+    $or: [
+      { [`elem.${field}`]: { $exists: false } },
+      { [`elem.${field}`]: null }
+    ]
+  };
+
+  const result = await Campaign.updateOne(
+    {
+      _id: campaignId,
+      queue: { $elemMatch: { trackingId, ...unopenedCondition } }
+    },
+    {
+      $set: { [`queue.$[elem].${field}`]: new Date() },
+      $inc: { [counterField]: 1 }
+    },
+    {
+      arrayFilters: [arrayFilter]
+    }
+  );
+
+  return result.modifiedCount > 0;
+};
+
 exports.open = async (req, res) => {
   try {
     const { campaignId, trackingId } = req.params;
-    if (campaignId && trackingId) {
-      await Campaign.updateOne(
-        { _id: campaignId, 'queue.trackingId': trackingId, 'queue.openedAt': { $exists: false } },
-        { $set: { 'queue.$.openedAt': new Date() }, $inc: { openCount: 1 } }
-      );
-    }
+    await markQueueEventOnce({
+      campaignId,
+      trackingId,
+      field: 'openedAt',
+      counterField: 'openCount'
+    });
   } catch (e) {
     // Swallow errors to avoid breaking image fetch
   }
@@ -33,7 +68,13 @@ exports.manualOpen = async (req, res) => {
     const { trackingId } = req.params;
     if (trackingId) {
       await MailMessage.updateOne(
-        { trackingId, openedAt: { $exists: false } }, // Only track first open
+        {
+          trackingId,
+          $or: [
+            { openedAt: { $exists: false } },
+            { openedAt: null }
+          ]
+        }, // Only track first open
         { $set: { openedAt: new Date() } }
       );
     }
@@ -52,12 +93,12 @@ exports.click = async (req, res) => {
   const sig = req.query.sig;
 
   try {
-    if (campaignId && trackingId) {
-      await Campaign.updateOne(
-        { _id: campaignId, 'queue.trackingId': trackingId, 'queue.clickedAt': { $exists: false } },
-        { $set: { 'queue.$.clickedAt': new Date() }, $inc: { clickCount: 1 } }
-      );
-    }
+    await markQueueEventOnce({
+      campaignId,
+      trackingId,
+      field: 'clickedAt',
+      counterField: 'clickCount'
+    });
   } catch (e) {
     // Swallow errors and still redirect
   }

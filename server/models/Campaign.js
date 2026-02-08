@@ -1,4 +1,5 @@
 ﻿const mongoose = require('mongoose');
+const { createTrackingId } = require('../utils/tracking');
 
 const EmailQueueItemSchema = new mongoose.Schema({
   leadId: String,
@@ -34,6 +35,20 @@ const CampaignSchema = new mongoose.Schema({
   completedAt: Date
 }, { timestamps: true });
 
+CampaignSchema.pre('validate', function ensureUniqueQueueTrackingIds(next) {
+  if (!Array.isArray(this.queue)) return next();
+
+  const seen = new Set();
+  for (const item of this.queue) {
+    while (!item.trackingId || seen.has(item.trackingId)) {
+      item.trackingId = createTrackingId();
+    }
+    seen.add(item.trackingId);
+  }
+
+  return next();
+});
+
 CampaignSchema.set('toJSON', {
   virtuals: true,
   transform: (_, ret) => {
@@ -44,4 +59,3 @@ CampaignSchema.set('toJSON', {
 });
 
 module.exports = mongoose.model('Campaign', CampaignSchema);
-

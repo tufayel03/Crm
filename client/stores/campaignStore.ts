@@ -116,7 +116,16 @@ const DEFAULT_TEMPLATES: EmailTemplate[] = [
   }
 ];
 
-const createTrackingId = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+const createTrackingId = () => {
+  const webCrypto = globalThis.crypto;
+  if (webCrypto?.randomUUID) return webCrypto.randomUUID().replace(/-/g, '');
+  if (webCrypto?.getRandomValues) {
+    const bytes = new Uint8Array(16);
+    webCrypto.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  }
+  return `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+};
 
 export const useCampaignStore = create<CampaignState>((set, get) => ({
   templates: DEFAULT_TEMPLATES,
@@ -223,13 +232,21 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       }
     });
 
-    const queue: EmailQueueItem[] = Array.from(uniqueRecipients.values()).map(l => ({
-      leadId: l.id,
-      leadName: l.name,
-      leadEmail: l.email,
-      status: 'Pending',
-      trackingId: createTrackingId()
-    }));
+    const usedTrackingIds = new Set<string>();
+    const queue: EmailQueueItem[] = Array.from(uniqueRecipients.values()).map((l) => {
+      let trackingId = createTrackingId();
+      while (usedTrackingIds.has(trackingId)) {
+        trackingId = createTrackingId();
+      }
+      usedTrackingIds.add(trackingId);
+      return {
+        leadId: l.id,
+        leadName: l.name,
+        leadEmail: l.email,
+        status: 'Pending',
+        trackingId
+      };
+    });
 
     const isScheduled = !!data.scheduledAt;
 
@@ -389,5 +406,4 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     }
   }
 }));
-
 

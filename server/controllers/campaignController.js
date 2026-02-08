@@ -12,7 +12,7 @@ const ensureUniqueTrackingIds = (queue = []) => {
   const seen = new Set();
   return queue.map((item) => {
     const next = { ...item };
-    if (!next.trackingId || seen.has(next.trackingId)) {
+    while (!next.trackingId || seen.has(next.trackingId)) {
       next.trackingId = createTrackingId();
     }
     seen.add(next.trackingId);

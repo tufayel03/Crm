@@ -5,6 +5,7 @@ const getBaseUrl = (override) => {
   return (
     process.env.PUBLIC_BASE_URL ||
     process.env.APP_BASE_URL ||
+    process.env.API_URL ||
     process.env.BASE_URL ||
     `http://localhost:${process.env.PORT || 5000}`
   );
@@ -20,18 +21,25 @@ const signClickTarget = (campaignId, trackingId, url) => {
   return crypto.createHmac('sha256', getTrackingSecret()).update(payload).digest('hex');
 };
 
+const OPEN_TRACK_TAG_REGEX = /<img\b[^>]*(?:data-track-open\s*=\s*["']?1["']?|\/api\/v1\/track\/open\/)[^>]*>/gi;
+const MANUAL_OPEN_TRACK_TAG_REGEX = /<img\b[^>]*(?:data-track-manual-open\s*=\s*["']?1["']?|\/api\/v1\/track\/manual\/)[^>]*>/gi;
+const BODY_CLOSE_REGEX = /<\/body>/i;
+
+const appendBeforeBody = (html, tag) => {
+  if (BODY_CLOSE_REGEX.test(html)) {
+    return html.replace(BODY_CLOSE_REGEX, `${tag}</body>`);
+  }
+  return `${html}${tag}`;
+};
+
 const injectOpenPixel = (html = '', campaignId, trackingId, baseOverride) => {
   if (!campaignId || !trackingId) return html;
   const baseUrl = getBaseUrl(baseOverride).replace(/\/$/, '');
   const pixelUrl = `${baseUrl}/api/v1/track/open/${encodeURIComponent(campaignId)}/${encodeURIComponent(trackingId)}`;
   const pixelTag = `<img src="${pixelUrl}" width="1" height="1" style="display:none;opacity:0" alt="" data-track-open="1" />`;
-
-  if (!html) return pixelTag;
-  if (html.includes('data-track-open')) return html;
-  if (html.includes('</body>')) {
-    return html.replace('</body>', `${pixelTag}</body>`);
-  }
-  return `${html}${pixelTag}`;
+  const htmlWithoutOldPixels = String(html || '').replace(OPEN_TRACK_TAG_REGEX, '');
+  if (!htmlWithoutOldPixels) return pixelTag;
+  return appendBeforeBody(htmlWithoutOldPixels, pixelTag);
 };
 
 const injectManualOpenPixel = (html = '', trackingId, baseOverride) => {
@@ -39,13 +47,9 @@ const injectManualOpenPixel = (html = '', trackingId, baseOverride) => {
   const baseUrl = getBaseUrl(baseOverride).replace(/\/$/, '');
   const pixelUrl = `${baseUrl}/api/v1/track/manual/${encodeURIComponent(trackingId)}`;
   const pixelTag = `<img src="${pixelUrl}" width="1" height="1" style="display:none;opacity:0" alt="" data-track-manual-open="1" />`;
-
-  if (!html) return pixelTag;
-  if (html.includes('data-track-manual-open')) return html;
-  if (html.includes('</body>')) {
-    return html.replace('</body>', `${pixelTag}</body>`);
-  }
-  return `${html}${pixelTag}`;
+  const htmlWithoutOldPixels = String(html || '').replace(MANUAL_OPEN_TRACK_TAG_REGEX, '');
+  if (!htmlWithoutOldPixels) return pixelTag;
+  return appendBeforeBody(htmlWithoutOldPixels, pixelTag);
 };
 
 const wrapClickTracking = (html = '', campaignId, trackingId, baseOverride) => {

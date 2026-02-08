@@ -2,7 +2,7 @@ const Campaign = require('../models/Campaign');
 const EmailTemplate = require('../models/EmailTemplate');
 const { sendMail } = require('../utils/mailer');
 const { getEmailAccount } = require('../utils/emailAccounts');
-const { injectOpenPixel, wrapClickTracking, createTrackingId } = require('../utils/tracking');
+const { injectOpenPixel, wrapClickTracking, createTrackingId, getBaseUrl } = require('../utils/tracking');
 const Settings = require('../models/Settings');
 const Lead = require('../models/Lead');
 const Client = require('../models/Client');
@@ -59,17 +59,21 @@ const runBatchForCampaign = async (campaign, batchSize = 20) => {
 
   // Re-fetch campaign to get latest queue state (in case of concurrent edits)
   const freshCampaign = await Campaign.findById(campaign._id);
+  if (!freshCampaign) return;
   // Safety net: old/edited campaigns may have missing or duplicate IDs.
   let queueChanged = false;
   const seenTrackingIds = new Set();
   for (const item of freshCampaign.queue) {
-    if (!item.trackingId || seenTrackingIds.has(item.trackingId)) {
+    while (!item.trackingId || seenTrackingIds.has(item.trackingId)) {
       item.trackingId = createTrackingId();
       queueChanged = true;
     }
     seenTrackingIds.add(item.trackingId);
   }
-  if (queueChanged) await freshCampaign.save();
+  if (queueChanged) {
+    freshCampaign.markModified('queue');
+    await freshCampaign.save();
+  }
 
   const pendingItems = freshCampaign.queue.filter(q => q.status === 'Pending').slice(0, safeBatchSize);
 
@@ -83,7 +87,7 @@ const runBatchForCampaign = async (campaign, batchSize = 20) => {
   }
 
   // Mark selected items as Processing
-  const targetTrackingIds = pendingItems.map(p => p.trackingId);
+  const targetTrackingIds = Array.from(new Set(pendingItems.map((p) => p.trackingId).filter(Boolean)));
   await Campaign.updateMany(
     { _id: campaign._id },
     { $set: { "queue.$[elem].status": 'Processing' } },
@@ -98,6 +102,8 @@ const runBatchForCampaign = async (campaign, batchSize = 20) => {
 
   let sentCount = 0;
   let failedCount = 0;
+
+  const campaignId = String(freshCampaign._id);
 
   for (const item of pendingItems) {
     try {
@@ -146,9 +152,9 @@ const runBatchForCampaign = async (campaign, batchSize = 20) => {
 
       const subject = applyTemplateTokens(template?.subject || campaign.templateName || campaign.name, tokenData);
       const htmlWithTokens = applyTemplateTokens(html, tokenData);
-      const baseUrl = general.publicTrackingUrl || '';
-      const htmlWithPixel = injectOpenPixel(htmlWithTokens, campaign.id, item.trackingId, baseUrl);
-      const htmlTracked = wrapClickTracking(htmlWithPixel, campaign.id, item.trackingId, baseUrl);
+      const baseUrl = general.publicTrackingUrl || process.env.API_URL || getBaseUrl();
+      const htmlWithPixel = injectOpenPixel(htmlWithTokens, campaignId, item.trackingId, baseUrl);
+      const htmlTracked = wrapClickTracking(htmlWithPixel, campaignId, item.trackingId, baseUrl);
 
       await sendMail({
         to: item.leadEmail,
