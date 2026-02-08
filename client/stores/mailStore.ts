@@ -19,6 +19,9 @@ export interface EmailMessage {
   folder?: string;
   imapUid?: number;
   messageId?: string;
+  inReplyTo?: string;
+  references?: string[];
+  threadId?: string;
 }
 
 interface MailState {

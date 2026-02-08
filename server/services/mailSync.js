@@ -5,6 +5,7 @@ const MailMessage = require('../models/MailMessage');
 const SyncState = require('../models/SyncState');
 const Lead = require('../models/Lead');
 const Client = require('../models/Client');
+const { buildThreadId, normalizeMessageId, parseReferences } = require('../utils/mailThread');
 
 const fs = require('fs');
 const path = require('path');
@@ -236,13 +237,30 @@ class MailSyncService {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
-    const safeBody = escapeHtml(parsed.text || parsed.html || '').replace(/\n/g, '<br/>');
+
+    const htmlBody = parsed.html ? String(parsed.html) : '';
+    const safeBody = htmlBody || escapeHtml(parsed.text || '').replace(/\n/g, '<br/>');
+
+    const messageId = normalizeMessageId(parsed.messageId || msg.envelope?.messageId);
+    const normalizedInReplyTo = normalizeMessageId(parsed.inReplyTo);
+    const normalizedReferences = parseReferences(parsed.references);
+    const threadId = buildThreadId({
+      subject: parsed.subject || '(no subject)',
+      messageId,
+      inReplyTo: normalizedInReplyTo,
+      references: normalizedReferences
+    });
+
+    const resolvedAccountId = String(account?.id || account?._id || account?.email || '');
 
     const emailParams = {
-      accountId: account.email, // Use email as robust ID
+      accountId: resolvedAccountId || account.email,
       accountEmail: account.email,
       imapUid: msg.uid,
-      messageId: parsed.messageId || msg.envelope?.messageId,
+      messageId: messageId || undefined,
+      inReplyTo: normalizedInReplyTo || undefined,
+      references: normalizedReferences,
+      threadId: threadId || undefined,
       from: parsed.from?.value?.[0]?.address || '',
       fromName: parsed.from?.value?.[0]?.name || parsed.from?.value?.[0]?.address,
       to: parsed.to?.value?.[0]?.address || account.email,
@@ -271,8 +289,10 @@ class MailSyncService {
 
     emailParams.folder = folder;
 
+    const accountIdCandidates = [resolvedAccountId, account.email].filter(Boolean);
+
     await MailMessage.updateOne(
-      { accountId: account.email, imapUid: msg.uid },
+      { accountId: { $in: accountIdCandidates }, imapUid: msg.uid },
       { $set: emailParams },
       { upsert: true }
     );

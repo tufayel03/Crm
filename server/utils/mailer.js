@@ -31,7 +31,7 @@ const formatFrom = (name, address) => {
   return `"${name.replace(/"/g, '')}" <${address}>`;
 };
 
-const sendMail = async ({ to, subject, html, text, attachments = [], account, fromName }) => {
+const sendMail = async ({ to, subject, html, text, attachments = [], account, fromName, inReplyTo, references }) => {
   const config = buildTransportConfig(account);
   const transporter = nodemailer.createTransport({
     host: config.host,
@@ -46,7 +46,9 @@ const sendMail = async ({ to, subject, html, text, attachments = [], account, fr
     subject,
     html,
     text,
-    attachments
+    attachments,
+    ...(inReplyTo ? { inReplyTo } : {}),
+    ...(references && references.length > 0 ? { references } : {})
   });
 
   return info;

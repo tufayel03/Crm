@@ -15,7 +15,15 @@ const getEmailAccount = async ({ accountId, purpose } = {}) => {
   if (accounts.length === 0) return null;
 
   if (accountId) {
-    return accounts.find(a => String(a.id) === String(accountId)) || null;
+    const normalized = String(accountId);
+    return (
+      accounts.find((a) =>
+        [a.id, a._id, a.email]
+          .filter(Boolean)
+          .map((v) => String(v))
+          .includes(normalized)
+      ) || null
+    );
   }
 
   if (purpose === 'clients') {

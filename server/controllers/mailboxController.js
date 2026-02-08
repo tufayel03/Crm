@@ -11,19 +11,19 @@ exports.getMessages = async (req, res) => {
   const settings = await Settings.findOne({});
   if (!settings) return res.status(404).json({ message: 'Settings not found' });
 
-  // Filter by account
-  const validAccounts = settings.emailAccounts.map(acc => acc.email);
-  const accountEmails = settings.emailAccounts.map(acc => acc.email);
-
   let query = {};
 
   if (accountId !== 'all') {
-    // Check if accountId matches an ID or Email
-    const matched = settings.emailAccounts.find(acc => acc.id === accountId || acc.email === accountId);
+    // Check if accountId matches id/_id/email
+    const matched = settings.emailAccounts.find((acc) => {
+      const candidates = [acc.id, acc._id, acc.email].filter(Boolean).map((v) => String(v));
+      return candidates.includes(String(accountId));
+    });
     if (matched) {
+      const accountIds = [matched.id, matched._id, matched.email].filter(Boolean).map((v) => String(v));
       query = {
         $or: [
-          { accountId: { $in: [matched.id, matched.email] } },
+          { accountId: { $in: accountIds } },
           { accountEmail: matched.email }
         ]
       };

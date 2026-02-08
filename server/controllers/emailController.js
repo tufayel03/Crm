@@ -4,6 +4,12 @@ const Settings = require('../models/Settings');
 const { injectInlineLogo } = require('../utils/inlineLogo');
 const { createTrackingId, injectManualOpenPixel, getBaseUrl } = require('../utils/tracking');
 const MailMessage = require('../models/MailMessage');
+const {
+  buildThreadId,
+  formatMessageIdHeader,
+  normalizeMessageId,
+  parseReferences
+} = require('../utils/mailThread');
 
 let syntheticSentUidCounter = 0;
 const nextSyntheticSentUid = () => {
@@ -37,7 +43,17 @@ const normalizeRecipients = (to) => {
 };
 
 exports.sendEmail = async (req, res) => {
-  const { to, subject, html, text, attachments = [], accountId, clientRequestId } = req.body;
+  const {
+    to,
+    subject,
+    html,
+    text,
+    attachments = [],
+    accountId,
+    clientRequestId,
+    inReplyTo,
+    references
+  } = req.body;
   if (!to || !subject) return res.status(400).json({ message: 'To and subject required' });
 
   const recipients = normalizeRecipients(to);
@@ -59,6 +75,8 @@ exports.sendEmail = async (req, res) => {
   const baseUrl = settings?.generalSettings?.publicTrackingUrl || process.env.API_URL || getBaseUrl();
 
   const finalAttachments = normalizedAttachments.concat(logoAttachments || []);
+  const normalizedInReplyTo = normalizeMessageId(inReplyTo);
+  const normalizedReferences = parseReferences(references);
 
   const sentMessages = [];
   const failures = [];
@@ -81,24 +99,40 @@ exports.sendEmail = async (req, res) => {
       const trackingId = createTrackingId();
       const htmlWithTracking = injectManualOpenPixel(finalHtml, trackingId, baseUrl);
 
-      await sendMail({
+      const mailInfo = await sendMail({
         to: recipient,
         subject,
         html: htmlWithTracking,
         text,
         attachments: finalAttachments,
         account,
-        fromName
+        fromName,
+        inReplyTo: formatMessageIdHeader(normalizedInReplyTo),
+        references: normalizedReferences.map(formatMessageIdHeader).filter(Boolean)
       });
 
+      const outboundMessageId = normalizeMessageId(mailInfo?.messageId) || `${Date.now()}-${trackingId}@matlance.com`;
+      const threadId = buildThreadId({
+        subject,
+        messageId: outboundMessageId,
+        inReplyTo: normalizedInReplyTo,
+        references: normalizedReferences
+      });
+      const resolvedAccountId = String(account?.id || account?._id || account?.email || 'default');
+      const resolvedAccountEmail = String(account?.email || process.env.SMTP_USER || 'system');
+      const fromAddress = String(account?.email || process.env.SMTP_USER || 'system');
+
       const payload = {
-        accountId: account ? account.id : 'default',
-        accountEmail: account ? account.email : (process.env.SMTP_USER || 'system'),
+        accountId: resolvedAccountId,
+        accountEmail: resolvedAccountEmail,
         folder: 'SENT',
         imapUid: nextSyntheticSentUid(),
-        messageId: `<${Date.now()}-${trackingId}@matlance.com>`,
+        messageId: outboundMessageId,
+        inReplyTo: normalizedInReplyTo || undefined,
+        references: normalizedReferences,
+        threadId: threadId || undefined,
         clientRequestId: requestIdForRecipient || undefined,
-        from: account ? account.email : (process.env.SMTP_USER || 'system'),
+        from: fromAddress,
         fromName,
         to: recipient,
         subject,

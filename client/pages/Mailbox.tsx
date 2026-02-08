@@ -68,6 +68,60 @@ const Mailbox: React.FC = () => {
     const [replyError, setReplyError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+    const getAccountKey = (account: any) =>
+        String(account?.id || account?._id || account?.email || '').trim();
+
+    const normalizeMessageId = (value: string | undefined | null) =>
+        String(value || '').trim().replace(/^<|>$/g, '');
+
+    const parseMessageIdList = (value: unknown): string[] => {
+        if (!value) return [];
+        const values = Array.isArray(value) ? value : [value];
+        const output: string[] = [];
+        const seen = new Set<string>();
+
+        values.forEach((entry) => {
+            const tokens = String(entry || '').match(/<[^>]+>|[^\s]+/g) || [];
+            tokens.forEach((token) => {
+                const normalized = normalizeMessageId(token);
+                if (!normalized || seen.has(normalized)) return;
+                seen.add(normalized);
+                output.push(normalized);
+            });
+        });
+
+        return output;
+    };
+
+    const normalizeSubject = (subject: string) =>
+        String(subject || '')
+            .replace(/^\s*((re|fwd)\s*:\s*)+/i, '')
+            .trim()
+            .toLowerCase();
+
+    const getThreadKey = (message: EmailMessage) => {
+        if (message.threadId) return String(message.threadId);
+
+        const refs = parseMessageIdList((message as any).references);
+        if (refs.length > 0) return refs[0];
+
+        const replyTo = normalizeMessageId((message as any).inReplyTo);
+        if (replyTo) return replyTo;
+
+        const msgId = normalizeMessageId(message.messageId);
+        if (msgId) return msgId;
+
+        const fallback = normalizeSubject(message.subject);
+        return fallback ? `subject:${fallback}` : '';
+    };
+
+    const buildReplyReferences = (message: EmailMessage) => {
+        const refs = parseMessageIdList((message as any).references);
+        const msgId = normalizeMessageId(message.messageId);
+        if (msgId && !refs.includes(msgId)) refs.push(msgId);
+        return refs;
+    };
+
     const htmlToPlainText = (value: string) =>
         String(value || '')
             .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -128,6 +182,13 @@ const Mailbox: React.FC = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    useEffect(() => {
+        if (!isComposeOpen) return;
+        if (composeAccountId) return;
+        if (emailAccounts.length === 0) return;
+        setComposeAccountId(getAccountKey(emailAccounts[0]));
+    }, [isComposeOpen, composeAccountId, emailAccounts]);
+
     // REAL-TIME SOCKET SETUP (Gmail-like architecture)
     useEffect(() => {
         // Initial Fetch (One-time on mount/account change)
@@ -169,7 +230,7 @@ const Mailbox: React.FC = () => {
 
     // --- Account Switching Logic ---
     const currentAccount = useMemo(() =>
-        emailAccounts.find(acc => acc.id === selectedAccountId),
+        emailAccounts.find(acc => getAccountKey(acc) === selectedAccountId),
         [emailAccounts, selectedAccountId]);
 
     // --- Filtering Logic ---
@@ -178,7 +239,7 @@ const Mailbox: React.FC = () => {
 
         // 0. Account Filter
         if (selectedAccountId !== 'all' && currentAccount) {
-            const selectedId = String(currentAccount.id || '').toLowerCase();
+            const selectedId = getAccountKey(currentAccount).toLowerCase();
             const selectedEmail = String(currentAccount.email || '').toLowerCase();
             list = list.filter(e => {
                 const msgAccountId = String((e as any).accountId || '').toLowerCase();
@@ -373,6 +434,33 @@ const Mailbox: React.FC = () => {
         emails.find(e => e.id === selectedEmailId),
         [emails, selectedEmailId]);
 
+    const threadEmails = useMemo(() => {
+        if (!selectedEmail) return [];
+
+        const selectedThreadKey = getThreadKey(selectedEmail);
+        const selectedSubjectKey = normalizeSubject(selectedEmail.subject);
+
+        const isVisibleInCurrentView = (message: EmailMessage) => {
+            if (message.folder === 'DELETED') return false;
+            if (selectedFolder !== 'Trash' && message.folder === 'TRASH') return false;
+            if (selectedFolder === 'Trash') return message.folder === 'TRASH' || message.folder === 'DELETED';
+            return true;
+        };
+
+        return emails
+            .filter((message) => {
+                if (!isVisibleInCurrentView(message)) return false;
+
+                const messageThreadKey = getThreadKey(message);
+                if (selectedThreadKey && messageThreadKey) {
+                    return messageThreadKey === selectedThreadKey;
+                }
+
+                return normalizeSubject(message.subject) === selectedSubjectKey;
+            })
+            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    }, [emails, selectedEmail, selectedFolder]);
+
     // --- Helper to get sender details ---
     const getSenderDetails = (email: EmailMessage) => {
         const lead = leads.find(l => l.email.toLowerCase() === email.from.toLowerCase());
@@ -411,7 +499,7 @@ const Mailbox: React.FC = () => {
         const defaultAccountId =
             selectedAccountId !== 'all'
                 ? selectedAccountId
-                : (emailAccounts[0]?.id || '');
+                : getAccountKey(emailAccounts[0]);
 
         setComposeAccountId(defaultAccountId);
         setComposeTo('');
@@ -497,6 +585,7 @@ const Mailbox: React.FC = () => {
 
             const htmlBody = composeMode === 'html' ? composeBody : composeBody.replace(/\n/g, '<br/>');
             const textBody = composeMode === 'text' ? composeBody : htmlToPlainText(composeBody);
+            const clientRequestId = `compose-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
             const response: any = await apiRequest('/api/v1/email/send', {
                 method: 'POST',
@@ -506,6 +595,7 @@ const Mailbox: React.FC = () => {
                     html: htmlBody,
                     text: textBody,
                     ...(composeAccountId ? { accountId: composeAccountId } : {}),
+                    clientRequestId,
                     attachments
                 })
             });
@@ -548,8 +638,13 @@ const Mailbox: React.FC = () => {
         setIsSendingReply(true);
         setReplyError(null);
         const html = applyTemplateTokens(replyContent, tokenData).replace(/\n/g, '<br/>');
-        const accountId = selectedAccountId !== 'all' ? selectedAccountId : undefined;
+        const accountId = selectedAccountId !== 'all'
+            ? selectedAccountId
+            : String((selectedEmail as any).accountId || (selectedEmail as any).accountEmail || getAccountKey(emailAccounts[0]) || '');
         const subject = applyTemplateTokens(`Re: ${selectedEmail.subject}`, tokenData);
+        const inReplyTo = normalizeMessageId(selectedEmail.messageId);
+        const references = buildReplyReferences(selectedEmail);
+        const clientRequestId = `reply-${selectedEmail.id}-${Date.now()}`;
 
         apiRequest('/api/v1/email/send', {
             method: 'POST',
@@ -557,7 +652,10 @@ const Mailbox: React.FC = () => {
                 to: selectedEmail.from,
                 subject,
                 html,
-                accountId
+                ...(accountId ? { accountId } : {}),
+                ...(inReplyTo ? { inReplyTo } : {}),
+                ...(references.length > 0 ? { references } : {}),
+                clientRequestId
             })
         })
             .then((res: any) => {
@@ -651,11 +749,13 @@ const Mailbox: React.FC = () => {
                                     <div className="w-8 h-8 rounded-full bg-slate-500 flex items-center justify-center text-white font-bold">A</div>
                                     <span className="font-medium">All Inboxes</span>
                                 </button>
-                                {emailAccounts.map(acc => (
+                                {emailAccounts.map(acc => {
+                                    const accountKey = getAccountKey(acc);
+                                    return (
                                     <button
-                                        key={acc.id}
-                                        onClick={() => { setSelectedAccountId(acc.id); setIsAccountMenuOpen(false); }}
-                                        className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left ${selectedAccountId === acc.id ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}`}
+                                        key={accountKey || acc.email}
+                                        onClick={() => { setSelectedAccountId(accountKey); setIsAccountMenuOpen(false); }}
+                                        className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left ${selectedAccountId === accountKey ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}`}
                                     >
                                         <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">
                                             {(acc.username || acc.email).charAt(0).toUpperCase()}
@@ -665,7 +765,8 @@ const Mailbox: React.FC = () => {
                                             <span className="text-xs text-gray-500 truncate">{acc.email}</span>
                                         </div>
                                     </button>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
@@ -1183,53 +1284,38 @@ const Mailbox: React.FC = () => {
 
                         <div className="flex-1 overflow-y-auto p-4 no-scrollbar">
                             {/* Thread View */}
-                            {(() => {
-                                // 1. Thread Logic: Find related emails (Subject matching)
-                                // Clean subject: remove Re:, Fwd:, [labels], etc.
-                                const cleanSubject = (s: string) => s.replace(/^(Re|Fwd): /i, '').trim();
-                                const currentSubject = cleanSubject(selectedEmail.subject);
-
-                                const thread = emails
-                                    .filter(e => {
-                                        if (e.folder === 'DELETED') return false;
-                                        if (selectedFolder !== 'Trash' && e.folder === 'TRASH') return false;
-                                        return cleanSubject(e.subject) === currentSubject;
-                                    })
-                                    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-                                return thread.map((msg, index) => (
-                                    <div key={msg.id} className={`mb-6 ${index !== thread.length - 1 ? 'border-b border-gray-100 pb-6' : ''}`}>
-                                        <div className="flex justify-between items-start mb-4">
-                                            <h2 className="text-xl font-bold text-textPrimary leading-tight mb-1">{msg.subject}</h2>
-                                            <div className="flex items-center gap-2">
-                                                {getSenderDetails(msg).type === 'Lead' && (
-                                                    <span className="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-1 rounded">Lead: {getSenderDetails(msg).status}</span>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        <div className="flex items-start gap-4 mb-4">
-                                            <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-lg font-bold text-textSecondary shrink-0">
-                                                {(msg.fromName || '?').charAt(0)}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex justify-between items-baseline flex-wrap">
-                                                    <h4 className="font-bold text-textPrimary mr-2">{msg.fromName} <span className="text-xs font-normal text-textMuted">&lt;{msg.from}&gt;</span></h4>
-                                                    <span className="text-xs text-textMuted whitespace-nowrap">{new Date(msg.timestamp).toLocaleString()}</span>
-                                                </div>
-                                                <p className="text-xs text-textSecondary truncate">to {msg.to || 'me'}</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="max-w-none text-textPrimary break-words">
-                                            <div
-                                                className="[&_img]:max-w-full [&_table]:max-w-full [&_table]:h-auto"
-                                                dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(msg.body) }}
-                                            />
+                            {threadEmails.map((msg, index) => (
+                                <div key={msg.id} className={`mb-6 ${index !== threadEmails.length - 1 ? 'border-b border-gray-100 pb-6' : ''}`}>
+                                    <div className="flex justify-between items-start mb-4">
+                                        <h2 className="text-xl font-bold text-textPrimary leading-tight mb-1">{msg.subject}</h2>
+                                        <div className="flex items-center gap-2">
+                                            {getSenderDetails(msg).type === 'Lead' && (
+                                                <span className="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-1 rounded">Lead: {getSenderDetails(msg).status}</span>
+                                            )}
                                         </div>
                                     </div>
-                                ));
-                            })()}
+
+                                    <div className="flex items-start gap-4 mb-4">
+                                        <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-lg font-bold text-textSecondary shrink-0">
+                                            {(msg.fromName || '?').charAt(0)}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex justify-between items-baseline flex-wrap">
+                                                <h4 className="font-bold text-textPrimary mr-2">{msg.fromName} <span className="text-xs font-normal text-textMuted">&lt;{msg.from}&gt;</span></h4>
+                                                <span className="text-xs text-textMuted whitespace-nowrap">{new Date(msg.timestamp).toLocaleString()}</span>
+                                            </div>
+                                            <p className="text-xs text-textSecondary truncate">to {msg.to || 'me'}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="max-w-none text-textPrimary break-words">
+                                        <div
+                                            className="[&_img]:max-w-full [&_table]:max-w-full [&_table]:h-auto"
+                                            dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(msg.body) }}
+                                        />
+                                    </div>
+                                </div>
+                            ))}
 
                             {selectedEmail.attachments && selectedEmail.attachments.length > 0 && (
                                 <div className="mt-8 pt-4 border-t border-border">
@@ -1367,7 +1453,7 @@ const Mailbox: React.FC = () => {
                                             <option value="">No account configured</option>
                                         ) : (
                                             emailAccounts.map((acc) => (
-                                                <option key={acc.id} value={acc.id}>
+                                                <option key={getAccountKey(acc) || acc.email} value={getAccountKey(acc)}>
                                                     {acc.username || acc.email} ({acc.email})
                                                 </option>
                                             ))
