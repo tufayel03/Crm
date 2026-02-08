@@ -9,32 +9,19 @@ const ONE_BY_ONE_GIF = Buffer.from(
 const markQueueEventOnce = async ({ campaignId, trackingId, field, counterField }) => {
   if (!campaignId || !trackingId) return false;
 
-  const unopenedCondition = {
-    $or: [
-      { [field]: { $exists: false } },
-      { [field]: null }
-    ]
-  };
-
-  const arrayFilter = {
-    'elem.trackingId': trackingId,
-    $or: [
-      { [`elem.${field}`]: { $exists: false } },
-      { [`elem.${field}`]: null }
-    ]
-  };
-
   const result = await Campaign.updateOne(
     {
       _id: campaignId,
-      queue: { $elemMatch: { trackingId, ...unopenedCondition } }
+      queue: {
+        $elemMatch: {
+          trackingId,
+          [field]: null // Matches both null and missing values
+        }
+      }
     },
     {
-      $set: { [`queue.$[elem].${field}`]: new Date() },
+      $set: { [`queue.$.${field}`]: new Date() },
       $inc: { [counterField]: 1 }
-    },
-    {
-      arrayFilters: [arrayFilter]
     }
   );
 
@@ -50,9 +37,7 @@ exports.open = async (req, res) => {
       field: 'openedAt',
       counterField: 'openCount'
     });
-  } catch (e) {
-    // Swallow errors to avoid breaking image fetch
-  }
+  } catch (e) { }
 
   res.setHeader('Content-Type', 'image/gif');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -70,10 +55,7 @@ exports.manualOpen = async (req, res) => {
       await MailMessage.updateOne(
         {
           trackingId,
-          $or: [
-            { openedAt: { $exists: false } },
-            { openedAt: null }
-          ]
+          openedAt: null
         }, // Only track first open
         { $set: { openedAt: new Date() } }
       );

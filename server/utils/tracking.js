@@ -1,14 +1,28 @@
 const crypto = require('crypto');
 
+const normalizeBaseUrl = (input) => {
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (raw.startsWith('//')) return `https:${raw}`;
+  return `https://${raw.replace(/^\/+/, '')}`;
+};
+
 const getBaseUrl = (override) => {
-  if (override) return override;
-  return (
-    process.env.PUBLIC_BASE_URL ||
-    process.env.APP_BASE_URL ||
-    process.env.API_URL ||
-    process.env.BASE_URL ||
-    `http://localhost:${process.env.PORT || 5000}`
-  );
+  const candidates = [
+    override,
+    process.env.PUBLIC_BASE_URL,
+    process.env.APP_BASE_URL,
+    process.env.API_URL,
+    process.env.BASE_URL
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeBaseUrl(candidate);
+    if (normalized) return normalized;
+  }
+
+  return `http://localhost:${process.env.PORT || 5000}`;
 };
 
 const createTrackingId = () => {
