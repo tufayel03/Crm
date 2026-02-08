@@ -22,7 +22,7 @@ const Mailbox: React.FC = () => {
     const { leads, statuses, addNote } = useLeadsStore();
     const { clients, addClientNote } = useClientsStore();
     const { emailAccounts, generalSettings } = useSettingsStore();
-    const { templates, sendSingleEmail } = useCampaignStore();
+    const { templates } = useCampaignStore();
 
     const [search, setSearch] = useState('');
     const [selectedFolder, setSelectedFolder] = useState<'General' | 'Sent' | 'Trash' | 'Clients' | string>('General');
@@ -48,6 +48,18 @@ const Mailbox: React.FC = () => {
     const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
     const accountMenuRef = useRef<HTMLDivElement>(null);
 
+    // Compose State
+    const [isComposeOpen, setIsComposeOpen] = useState(false);
+    const [composeAccountId, setComposeAccountId] = useState('');
+    const [composeTo, setComposeTo] = useState('');
+    const [composeSubject, setComposeSubject] = useState('');
+    const [composeMode, setComposeMode] = useState<'html' | 'text'>('html');
+    const [composeBody, setComposeBody] = useState('');
+    const [composeTemplateId, setComposeTemplateId] = useState('');
+    const [composeAttachments, setComposeAttachments] = useState<File[]>([]);
+    const [composeError, setComposeError] = useState<string | null>(null);
+    const [isSendingCompose, setIsSendingCompose] = useState(false);
+
     // Reply State
     const [isReplying, setIsReplying] = useState(false);
     const [replyContent, setReplyContent] = useState('');
@@ -55,6 +67,42 @@ const Mailbox: React.FC = () => {
     const [isSendingReply, setIsSendingReply] = useState(false);
     const [replyError, setReplyError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+    const htmlToPlainText = (value: string) =>
+        String(value || '')
+            .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+            .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/&nbsp;/gi, ' ')
+            .replace(/&amp;/gi, '&')
+            .replace(/&lt;/gi, '<')
+            .replace(/&gt;/gi, '>')
+            .replace(/&quot;/gi, '"')
+            .replace(/&#39;/gi, "'")
+            .replace(/\r/g, '')
+            .replace(/[ \t]+\n/g, '\n')
+            .replace(/\n{3,}/g, '\n\n')
+            .replace(/[ \t]{2,}/g, ' ')
+            .trim();
+
+    const toBodySnippet = (value: string) => {
+        const plain = htmlToPlainText(value);
+        return plain || '(No preview)';
+    };
+
+    const fileToBase64 = (file: File) =>
+        new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const result = String(reader.result || '');
+                const base64 = result.includes(',') ? result.split(',')[1] : result;
+                resolve(base64);
+            };
+            reader.onerror = () => reject(reader.error || new Error('Failed to read file'));
+            reader.readAsDataURL(file);
+        });
     const sanitizeEmailHtml = (value: string) => {
         const raw = String(value || '');
         const hasHtmlTag = /<\w+[\s\S]*?>/i.test(raw);
@@ -359,6 +407,131 @@ const Mailbox: React.FC = () => {
         }
     };
 
+    const openCompose = () => {
+        const defaultAccountId =
+            selectedAccountId !== 'all'
+                ? selectedAccountId
+                : (emailAccounts[0]?.id || '');
+
+        setComposeAccountId(defaultAccountId);
+        setComposeTo('');
+        setComposeSubject('');
+        setComposeMode('html');
+        setComposeBody('');
+        setComposeTemplateId('');
+        setComposeAttachments([]);
+        setComposeError(null);
+        setIsComposeOpen(true);
+    };
+
+    const closeCompose = () => {
+        if (isSendingCompose) return;
+        setIsComposeOpen(false);
+        setComposeError(null);
+    };
+
+    const handleComposeTemplateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const templateId = e.target.value;
+        setComposeTemplateId(templateId);
+        if (!templateId) return;
+
+        const template = templates.find((t) => t.id === templateId);
+        if (!template) return;
+
+        const baseTokens = buildCompanyTokens(generalSettings);
+        const tokenData = {
+            ...baseTokens,
+            lead_name: 'Customer',
+            lead_first_name: 'Customer',
+            lead_email: '',
+            client_name: 'Customer'
+        };
+
+        setComposeSubject(applyTemplateTokens(template.subject, tokenData));
+        const processedHtml = applyTemplateTokens(template.htmlContent || '', tokenData);
+        setComposeBody(composeMode === 'text' ? htmlToPlainText(processedHtml) : processedHtml);
+    };
+
+    const handleComposeFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+        setComposeAttachments((prev) => [...prev, ...files]);
+        e.target.value = '';
+    };
+
+    const handleRemoveComposeAttachment = (index: number) => {
+        setComposeAttachments((prev) => prev.filter((_, i) => i !== index));
+    };
+
+    const handleSendCompose = async () => {
+        const to = composeTo.trim();
+        const subject = composeSubject.trim();
+        const body = composeBody.trim();
+        if (!to) {
+            setComposeError('Recipient email is required.');
+            return;
+        }
+        if (!subject) {
+            setComposeError('Subject is required.');
+            return;
+        }
+        if (!body && composeAttachments.length === 0) {
+            setComposeError('Write a message or attach a file.');
+            return;
+        }
+        if (emailAccounts.length > 0 && !composeAccountId) {
+            setComposeError('Select sender account.');
+            return;
+        }
+
+        setIsSendingCompose(true);
+        setComposeError(null);
+        try {
+            const attachments = await Promise.all(
+                composeAttachments.map(async (file) => ({
+                    filename: file.name,
+                    contentBase64: await fileToBase64(file),
+                    contentType: file.type || 'application/octet-stream'
+                }))
+            );
+
+            const htmlBody = composeMode === 'html' ? composeBody : composeBody.replace(/\n/g, '<br/>');
+            const textBody = composeMode === 'text' ? composeBody : htmlToPlainText(composeBody);
+
+            const response: any = await apiRequest('/api/v1/email/send', {
+                method: 'POST',
+                body: JSON.stringify({
+                    to: composeTo,
+                    subject: composeSubject,
+                    html: htmlBody,
+                    text: textBody,
+                    ...(composeAccountId ? { accountId: composeAccountId } : {}),
+                    attachments
+                })
+            });
+
+            if (response?.id) {
+                useMailStore.getState().addEmail(response);
+            } else if (Array.isArray(response?.sent)) {
+                response.sent.forEach((m: any) => {
+                    if (m?.id) useMailStore.getState().addEmail(m);
+                });
+            }
+
+            setIsComposeOpen(false);
+            setSuccessMessage('Email sent successfully!');
+            setTimeout(() => setSuccessMessage(null), 3000);
+
+            if (selectedFolder === 'Sent') {
+                await fetchEmails(selectedAccountId);
+            }
+        } catch (e: any) {
+            setComposeError(e?.message || 'Failed to send email');
+        } finally {
+            setIsSendingCompose(false);
+        }
+    };
+
     const handleSendReply = () => {
         if (!selectedEmail || !replyContent) return;
 
@@ -497,7 +670,10 @@ const Mailbox: React.FC = () => {
                         )}
                     </div>
 
-                    <button className="flex items-center gap-3 px-6 py-4 bg-[#c2e7ff] text-[#001d35] font-semibold rounded-2xl hover:shadow-md transition-shadow">
+                    <button
+                        onClick={openCompose}
+                        className="flex items-center gap-3 px-6 py-4 bg-[#c2e7ff] text-[#001d35] font-semibold rounded-2xl hover:shadow-md transition-shadow"
+                    >
                         <Plus size={24} />
                         <span>Compose</span>
                     </button>
@@ -863,7 +1039,7 @@ const Mailbox: React.FC = () => {
                                                     </span>
                                                     <span className="text-gray-400 mx-1">-</span>
                                                     <span className="text-gray-500 truncate font-normal">
-                                                        {email.body.replace(/<[^>]+>/g, '')}
+                                                        {toBodySnippet(email.body)}
                                                     </span>
                                                 </div>
                                             </td>
@@ -1162,6 +1338,167 @@ const Mailbox: React.FC = () => {
                     </div>
                 )}
             </div>
+            {/* Compose Modal */}
+            {isComposeOpen && (
+                <div className="fixed inset-0 z-[9998] bg-black/40 flex items-center justify-center p-4">
+                    <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
+                        <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+                            <h3 className="text-lg font-bold text-textPrimary">New Message</h3>
+                            <button
+                                onClick={closeCompose}
+                                className="p-1 text-textMuted hover:text-danger"
+                                disabled={isSendingCompose}
+                                title="Close"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="p-5 space-y-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-xs font-bold text-textSecondary uppercase mb-1">From Account</label>
+                                    <select
+                                        value={composeAccountId}
+                                        onChange={(e) => setComposeAccountId(e.target.value)}
+                                        className="w-full px-3 py-2 bg-appBg border border-border rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                                    >
+                                        {emailAccounts.length === 0 ? (
+                                            <option value="">No account configured</option>
+                                        ) : (
+                                            emailAccounts.map((acc) => (
+                                                <option key={acc.id} value={acc.id}>
+                                                    {acc.username || acc.email} ({acc.email})
+                                                </option>
+                                            ))
+                                        )}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-textSecondary uppercase mb-1">Content Type</label>
+                                    <select
+                                        value={composeMode}
+                                        onChange={(e) => setComposeMode(e.target.value as 'html' | 'text')}
+                                        className="w-full px-3 py-2 bg-appBg border border-border rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                                    >
+                                        <option value="html">HTML Email</option>
+                                        <option value="text">Plain Text Email</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-textSecondary uppercase mb-1">To</label>
+                                <input
+                                    type="text"
+                                    value={composeTo}
+                                    onChange={(e) => setComposeTo(e.target.value)}
+                                    placeholder="recipient@example.com or a,b,c@example.com"
+                                    className="w-full px-3 py-2 bg-appBg border border-border rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-xs font-bold text-textSecondary uppercase mb-1">Subject</label>
+                                    <input
+                                        type="text"
+                                        value={composeSubject}
+                                        onChange={(e) => setComposeSubject(e.target.value)}
+                                        placeholder="Email subject"
+                                        className="w-full px-3 py-2 bg-appBg border border-border rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-textSecondary uppercase mb-1">Template (Optional)</label>
+                                    <select
+                                        value={composeTemplateId}
+                                        onChange={handleComposeTemplateChange}
+                                        className="w-full px-3 py-2 bg-appBg border border-border rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                                    >
+                                        <option value="">-- Select Template --</option>
+                                        {templates.map((t) => (
+                                            <option key={t.id} value={t.id}>
+                                                {t.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-textSecondary uppercase mb-1">
+                                    {composeMode === 'html' ? 'HTML Body' : 'Text Body'}
+                                </label>
+                                <textarea
+                                    value={composeBody}
+                                    onChange={(e) => setComposeBody(e.target.value)}
+                                    placeholder={composeMode === 'html' ? '<h1>Hello</h1><p>Your message...</p>' : 'Write plain text message...'}
+                                    className="w-full px-3 py-2 bg-appBg border border-border rounded-lg outline-none focus:ring-2 focus:ring-primary min-h-[220px] font-mono text-sm"
+                                />
+                            </div>
+
+                            <div className="border border-border rounded-lg p-3 bg-slate-50">
+                                <div className="flex items-center justify-between">
+                                    <div className="text-xs font-bold text-textSecondary uppercase">Attachments</div>
+                                    <label className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-border rounded-lg text-xs font-bold text-textSecondary cursor-pointer hover:bg-slate-100">
+                                        <Paperclip size={14} />
+                                        Add Files
+                                        <input
+                                            type="file"
+                                            multiple
+                                            className="hidden"
+                                            onChange={handleComposeFiles}
+                                        />
+                                    </label>
+                                </div>
+                                {composeAttachments.length > 0 && (
+                                    <div className="mt-3 space-y-1">
+                                        {composeAttachments.map((file, idx) => (
+                                            <div key={`${file.name}-${idx}`} className="flex items-center justify-between text-sm bg-white border border-border rounded px-2 py-1">
+                                                <span className="truncate pr-2">{file.name}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveComposeAttachment(idx)}
+                                                    className="text-textMuted hover:text-danger"
+                                                    title="Remove file"
+                                                >
+                                                    <X size={14} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {composeError && (
+                                <div className="text-xs text-danger bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                                    {composeError}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="px-5 py-4 border-t border-gray-200 flex justify-end gap-2 bg-white">
+                            <button
+                                onClick={closeCompose}
+                                disabled={isSendingCompose}
+                                className="px-4 py-2 text-textSecondary font-bold hover:bg-slate-100 rounded-lg disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleSendCompose}
+                                disabled={isSendingCompose}
+                                className="px-5 py-2 bg-darkGreen text-white font-bold rounded-lg hover:bg-opacity-90 disabled:opacity-50 flex items-center gap-2"
+                            >
+                                <Send size={16} />
+                                {isSendingCompose ? 'Sending...' : 'Send'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Success Toast */}
             {successMessage && (
                 <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-[#0f172a] text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4 z-[9999]">
