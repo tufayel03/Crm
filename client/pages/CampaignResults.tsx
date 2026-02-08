@@ -7,11 +7,14 @@ import {
     Mail, MousePointer2, AlertTriangle, RefreshCw, Loader2
 } from 'lucide-react';
 
+const RECIPIENTS_PER_PAGE = 50;
+
 const CampaignResults: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const { campaigns, fetchCampaigns } = useCampaignStore();
     const [campaign, setCampaign] = useState(campaigns.find(c => c.id === id));
     const [activeTab, setActiveTab] = useState<'overview' | 'recipients'>('overview');
+    const [recipientPage, setRecipientPage] = useState(1);
 
     useEffect(() => {
         if (!campaign) fetchCampaigns();
@@ -20,6 +23,10 @@ const CampaignResults: React.FC = () => {
     useEffect(() => {
         setCampaign(campaigns.find(c => c.id === id));
     }, [campaigns, id]);
+
+    useEffect(() => {
+        setRecipientPage(1);
+    }, [id, activeTab]);
 
     if (!campaign) {
         return (
@@ -41,6 +48,24 @@ const CampaignResults: React.FC = () => {
     const clickRate = campaign.openCount > 0
         ? Math.round((campaign.clickCount / campaign.openCount) * 100)
         : 0;
+
+    const recipientTotal = campaign.queue.length;
+    const recipientTotalPages = Math.max(1, Math.ceil(recipientTotal / RECIPIENTS_PER_PAGE));
+    const currentRecipientPage = Math.min(recipientPage, recipientTotalPages);
+    const recipientStartIndex = (currentRecipientPage - 1) * RECIPIENTS_PER_PAGE;
+    const paginatedRecipients = campaign.queue.slice(
+        recipientStartIndex,
+        recipientStartIndex + RECIPIENTS_PER_PAGE
+    );
+    const recipientStart = recipientTotal === 0 ? 0 : recipientStartIndex + 1;
+    const recipientEnd = recipientTotal === 0
+        ? 0
+        : Math.min(recipientStartIndex + RECIPIENTS_PER_PAGE, recipientTotal);
+
+    const goToRecipientPage = (nextPage: number) => {
+        const clampedPage = Math.min(Math.max(nextPage, 1), recipientTotalPages);
+        setRecipientPage(clampedPage);
+    };
 
     return (
         <div className="space-y-6 pb-20">
@@ -160,7 +185,7 @@ const CampaignResults: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
-                            {campaign.queue.map((item, idx) => (
+                            {paginatedRecipients.map((item, idx) => (
                                 <tr key={idx} className="hover:bg-slate-50">
                                     <td className="px-4 py-3">
                                         <p className="font-bold text-textPrimary">{item.leadName}</p>
@@ -198,6 +223,32 @@ const CampaignResults: React.FC = () => {
                             ))}
                         </tbody>
                     </table>
+                    {campaign.queue.length > 0 && (
+                        <div className="px-4 py-3 border-t border-border bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-3">
+                            <p className="text-xs text-textSecondary">
+                                Showing {recipientStart} to {recipientEnd} of {recipientTotal} recipients
+                            </p>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => goToRecipientPage(currentRecipientPage - 1)}
+                                    disabled={currentRecipientPage <= 1}
+                                    className="px-3 py-1.5 text-xs font-bold rounded border border-border bg-white text-textSecondary hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Prev
+                                </button>
+                                <span className="text-xs font-bold text-textSecondary px-2">
+                                    Page {currentRecipientPage} of {recipientTotalPages}
+                                </span>
+                                <button
+                                    onClick={() => goToRecipientPage(currentRecipientPage + 1)}
+                                    disabled={currentRecipientPage >= recipientTotalPages}
+                                    className="px-3 py-1.5 text-xs font-bold rounded border border-border bg-white text-textSecondary hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        </div>
+                    )}
                     {campaign.queue.length === 0 && (
                         <div className="p-8 text-center text-textMuted text-sm">No recipients in queue.</div>
                     )}
