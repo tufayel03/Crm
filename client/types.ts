@@ -159,11 +159,16 @@ export interface EmailQueueItem {
   leadEmail: string;
   status: 'Pending' | 'Sent' | 'Failed';
   sentAt?: string;
+  sentMessageId?: string;
   sentBy?: string;
   error?: string;
   trackingId?: string;
   openedAt?: string;
   clickedAt?: string;
+  repliedAt?: string;
+  repliedMessageId?: string;
+  replyFrom?: string;
+  replySubject?: string;
 }
 
 export interface Campaign {
@@ -173,8 +178,11 @@ export interface Campaign {
   templateName: string;
   status: 'Draft' | 'Queued' | 'Scheduled' | 'Sending' | 'Paused' | 'Completed';
   targetStatus: LeadStatus | 'All';
+  targetStatuses?: LeadStatus[];
   targetAgentId: string | 'All';
+  targetAgentIds?: string[];
   targetOutcome?: string | 'All';
+  targetOutcomes?: string[];
   targetServiceStatus?: 'All' | 'Active' | 'Expired';
   targetServicePlan?: string | 'All';
 
@@ -183,6 +191,7 @@ export interface Campaign {
   failedCount: number;
   openCount: number;
   clickCount: number;
+  replyCount?: number;
   createdAt: string;
   completedAt?: string;
   queue: EmailQueueItem[];

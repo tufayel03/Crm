@@ -7,11 +7,16 @@ const EmailQueueItemSchema = new mongoose.Schema({
   leadEmail: String,
   status: { type: String, enum: ['Pending', 'Processing', 'Sent', 'Failed'], default: 'Pending' },
   sentAt: Date,
+  sentMessageId: String,
   sentBy: String,
   error: String,
   trackingId: { type: String, index: true },
   openedAt: Date,
-  clickedAt: Date
+  clickedAt: Date,
+  repliedAt: Date,
+  repliedMessageId: String,
+  replyFrom: String,
+  replySubject: String
 }, { _id: false });
 
 const CampaignSchema = new mongoose.Schema({
@@ -20,8 +25,11 @@ const CampaignSchema = new mongoose.Schema({
   templateName: { type: String, required: true },
   status: { type: String, enum: ['Draft', 'Queued', 'Scheduled', 'Sending', 'Paused', 'Completed'], default: 'Draft' },
   targetStatus: { type: String, default: 'All' },
+  targetStatuses: { type: [String], default: [] },
   targetAgentId: { type: String, default: 'All' },
+  targetAgentIds: { type: [String], default: [] },
   targetOutcome: { type: String, default: 'All' },
+  targetOutcomes: { type: [String], default: [] },
   targetServiceStatus: { type: String, default: 'All' },
   targetServicePlan: { type: String, default: 'All' },
   totalRecipients: { type: Number, default: 0 },
@@ -29,6 +37,7 @@ const CampaignSchema = new mongoose.Schema({
   failedCount: { type: Number, default: 0 },
   openCount: { type: Number, default: 0 },
   clickCount: { type: Number, default: 0 },
+  replyCount: { type: Number, default: 0 },
   queue: [EmailQueueItemSchema],
   previewText: String,
   scheduledAt: Date,

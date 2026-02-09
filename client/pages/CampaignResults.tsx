@@ -13,8 +13,9 @@ const CampaignResults: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const { campaigns, fetchCampaigns } = useCampaignStore();
     const [campaign, setCampaign] = useState(campaigns.find(c => c.id === id));
-    const [activeTab, setActiveTab] = useState<'overview' | 'recipients'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'recipients' | 'replied'>('overview');
     const [recipientPage, setRecipientPage] = useState(1);
+    const [repliedPage, setRepliedPage] = useState(1);
 
     useEffect(() => {
         if (!campaign) fetchCampaigns();
@@ -26,6 +27,7 @@ const CampaignResults: React.FC = () => {
 
     useEffect(() => {
         setRecipientPage(1);
+        setRepliedPage(1);
     }, [id, activeTab]);
 
     if (!campaign) {
@@ -49,6 +51,11 @@ const CampaignResults: React.FC = () => {
         ? Math.round((campaign.clickCount / campaign.openCount) * 100)
         : 0;
 
+    const replyCount = campaign.replyCount || 0;
+    const replyRate = campaign.sentCount > 0
+        ? Math.round((replyCount / campaign.sentCount) * 100)
+        : 0;
+
     const recipientTotal = campaign.queue.length;
     const recipientTotalPages = Math.max(1, Math.ceil(recipientTotal / RECIPIENTS_PER_PAGE));
     const currentRecipientPage = Math.min(recipientPage, recipientTotalPages);
@@ -62,9 +69,25 @@ const CampaignResults: React.FC = () => {
         ? 0
         : Math.min(recipientStartIndex + RECIPIENTS_PER_PAGE, recipientTotal);
 
+    const repliedItems = [...campaign.queue]
+        .filter((item) => Boolean(item.repliedAt))
+        .sort((a, b) => new Date(b.repliedAt || '').getTime() - new Date(a.repliedAt || '').getTime());
+    const repliedTotal = repliedItems.length;
+    const repliedTotalPages = Math.max(1, Math.ceil(repliedTotal / RECIPIENTS_PER_PAGE));
+    const currentRepliedPage = Math.min(repliedPage, repliedTotalPages);
+    const repliedStartIndex = (currentRepliedPage - 1) * RECIPIENTS_PER_PAGE;
+    const paginatedReplied = repliedItems.slice(repliedStartIndex, repliedStartIndex + RECIPIENTS_PER_PAGE);
+    const repliedStart = repliedTotal === 0 ? 0 : repliedStartIndex + 1;
+    const repliedEnd = repliedTotal === 0 ? 0 : Math.min(repliedStartIndex + RECIPIENTS_PER_PAGE, repliedTotal);
+
     const goToRecipientPage = (nextPage: number) => {
         const clampedPage = Math.min(Math.max(nextPage, 1), recipientTotalPages);
         setRecipientPage(clampedPage);
+    };
+
+    const goToRepliedPage = (nextPage: number) => {
+        const clampedPage = Math.min(Math.max(nextPage, 1), repliedTotalPages);
+        setRepliedPage(clampedPage);
     };
 
     return (
@@ -104,13 +127,19 @@ const CampaignResults: React.FC = () => {
                 >
                     Recipients ({campaign.queue.length})
                 </button>
+                <button
+                    onClick={() => setActiveTab('replied')}
+                    className={`pb-3 text-sm font-bold transition-colors border-b-2 ${activeTab === 'replied' ? 'border-primary text-primary' : 'border-transparent text-textSecondary hover:text-textPrimary'}`}
+                >
+                    Replied ({replyCount})
+                </button>
             </div>
 
             {/* Content */}
             {activeTab === 'overview' && (
                 <div className="space-y-6 animate-in slide-in-from-left duration-300">
                     {/* Stats Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                         <div className="p-4 bg-white border border-border rounded-xl">
                             <div className="flex items-center gap-3 mb-2">
                                 <div className="p-2 bg-green-50 text-green-600 rounded-lg"><CheckCircle2 size={20} /></div>
@@ -145,6 +174,15 @@ const CampaignResults: React.FC = () => {
                             </div>
                             <p className="text-2xl font-bold text-textPrimary">{campaign.failedCount}</p>
                             <p className="text-xs text-textSecondary">Bounce / Error</p>
+                        </div>
+
+                        <div className="p-4 bg-white border border-border rounded-xl">
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className="p-2 bg-purple-50 text-purple-600 rounded-lg"><Mail size={20} /></div>
+                                <span className="text-sm font-bold text-textSecondary">Replied</span>
+                            </div>
+                            <p className="text-2xl font-bold text-textPrimary">{replyCount}</p>
+                            <p className="text-xs text-textSecondary">{replyRate}% Reply Rate</p>
                         </div>
                     </div>
 
@@ -251,6 +289,87 @@ const CampaignResults: React.FC = () => {
                     )}
                     {campaign.queue.length === 0 && (
                         <div className="p-8 text-center text-textMuted text-sm">No recipients in queue.</div>
+                    )}
+                </div>
+            )}
+
+            {activeTab === 'replied' && (
+                <div className="bg-white border border-border rounded-xl overflow-hidden animate-in slide-in-from-right duration-300">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50 border-b border-border">
+                            <tr>
+                                <th className="px-4 py-3 font-semibold text-textSecondary">Recipient</th>
+                                <th className="px-4 py-3 font-semibold text-textSecondary">Sent At</th>
+                                <th className="px-4 py-3 font-semibold text-textSecondary">Replied At</th>
+                                <th className="px-4 py-3 font-semibold text-textSecondary">From</th>
+                                <th className="px-4 py-3 font-semibold text-textSecondary">Subject</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                            {paginatedReplied.map((item, idx) => (
+                                <tr key={`${item.trackingId || item.leadEmail}-${idx}`} className="hover:bg-slate-50">
+                                    <td className="px-4 py-3">
+                                        <p className="font-bold text-textPrimary">{item.leadName}</p>
+                                        <p className="text-xs text-textSecondary">{item.leadEmail}</p>
+                                    </td>
+                                    <td className="px-4 py-3 text-textSecondary">
+                                        {item.sentAt ? new Date(item.sentAt).toLocaleString() : '-'}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        <span className="text-purple-600 font-bold text-xs">
+                                            {item.repliedAt ? new Date(item.repliedAt).toLocaleString() : '-'}
+                                        </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-textSecondary text-xs">
+                                        {item.replyFrom || item.leadEmail || '-'}
+                                    </td>
+                                    <td className="px-4 py-3 text-textSecondary text-xs max-w-md">
+                                        {item.replyMessageId ? (
+                                            <Link
+                                                to={`/mailbox?messageId=${encodeURIComponent(item.replyMessageId)}&from=${encodeURIComponent(item.replyFrom || '')}&subject=${encodeURIComponent(item.replySubject || '')}`}
+                                                className="block truncate text-primary hover:underline font-semibold"
+                                                title="Open in Mailbox"
+                                            >
+                                                {item.replySubject || '(No Subject)'}
+                                            </Link>
+                                        ) : (
+                                            <span className="block truncate" title={item.replySubject || ''}>
+                                                {item.replySubject || '-'}
+                                            </span>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    {repliedTotal > 0 && (
+                        <div className="px-4 py-3 border-t border-border bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-3">
+                            <p className="text-xs text-textSecondary">
+                                Showing {repliedStart} to {repliedEnd} of {repliedTotal} replies
+                            </p>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => goToRepliedPage(currentRepliedPage - 1)}
+                                    disabled={currentRepliedPage <= 1}
+                                    className="px-3 py-1.5 text-xs font-bold rounded border border-border bg-white text-textSecondary hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Prev
+                                </button>
+                                <span className="text-xs font-bold text-textSecondary px-2">
+                                    Page {currentRepliedPage} of {repliedTotalPages}
+                                </span>
+                                <button
+                                    onClick={() => goToRepliedPage(currentRepliedPage + 1)}
+                                    disabled={currentRepliedPage >= repliedTotalPages}
+                                    className="px-3 py-1.5 text-xs font-bold rounded border border-border bg-white text-textSecondary hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                    {repliedTotal === 0 && (
+                        <div className="p-8 text-center text-textMuted text-sm">No replies tracked for this campaign yet.</div>
                     )}
                 </div>
             )}

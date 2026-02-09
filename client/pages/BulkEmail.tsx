@@ -10,7 +10,7 @@ import { useTeamStore } from '../stores/teamStore';
 import { usePermissions } from '../hooks/usePermissions';
 import {
     Send, Plus, Users, CheckCircle2, Clock, ChevronRight, X,
-    Calendar, Mail, Loader2, Phone, Briefcase, History, Settings, Zap
+    Calendar, Mail, Loader2, Phone, Briefcase, History, Settings, Zap, ChevronDown
 } from 'lucide-react';
 
 // Sub-components
@@ -18,6 +18,71 @@ import ActiveCampaignsList from '../components/campaigns/ActiveCampaignsList';
 import PastCampaignsList from '../components/campaigns/PastCampaignsList';
 
 
+
+interface CheckboxMultiSelectProps {
+    label: string;
+    placeholder: string;
+    options: Array<{ value: string; label: string }>;
+    values: string[];
+    onChange: (next: string[]) => void;
+}
+
+const CheckboxMultiSelect: React.FC<CheckboxMultiSelectProps> = ({ label, placeholder, options, values, onChange }) => {
+    const [open, setOpen] = useState(false);
+    const selectedSet = useMemo(() => new Set(values), [values]);
+
+    const summary = values.length === 0
+        ? placeholder
+        : values.length <= 2
+            ? options.filter(o => selectedSet.has(o.value)).map(o => o.label).join(', ')
+            : `${values.length} selected`;
+
+    const toggleValue = (value: string) => {
+        if (selectedSet.has(value)) onChange(values.filter(v => v !== value));
+        else onChange([...values, value]);
+    };
+
+    const allSelected = values.length > 0 && values.length === options.length;
+
+    return (
+        <div className="relative">
+            <label className="block text-xs font-bold text-textSecondary mb-1">{label}</label>
+            <button
+                type="button"
+                onClick={() => setOpen(prev => !prev)}
+                className="w-full px-3 py-2 border border-border rounded-lg bg-white text-left text-sm flex items-center justify-between"
+            >
+                <span className={`${values.length === 0 ? 'text-textMuted' : 'text-textPrimary'} truncate`}>{summary}</span>
+                <ChevronDown size={14} className={`text-textMuted transition-transform ${open ? 'rotate-180' : ''}`} />
+            </button>
+            {open && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-border rounded-lg shadow-lg z-20 max-h-56 overflow-y-auto p-2 space-y-1">
+                    <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={allSelected}
+                            onChange={(e) => onChange(e.target.checked ? options.map(o => o.value) : [])}
+                            className="rounded border-border text-primary focus:ring-primary"
+                        />
+                        <span className="text-xs font-bold text-textSecondary">Select All</span>
+                    </label>
+                    <div className="border-t border-border my-1" />
+                    {options.map((opt) => (
+                        <label key={opt.value} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={selectedSet.has(opt.value)}
+                                onChange={() => toggleValue(opt.value)}
+                                className="rounded border-border text-primary focus:ring-primary"
+                            />
+                            <span className="text-sm text-textPrimary">{opt.label}</span>
+                        </label>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
 
 const Campaigns: React.FC = () => {
     const {
@@ -49,8 +114,11 @@ const Campaigns: React.FC = () => {
         previewText: '',
         // Filters
         targetStatus: 'All',
+        targetStatuses: [] as string[],
         targetAgentId: 'All',
+        targetAgentIds: [] as string[],
         targetOutcome: 'All',
+        targetOutcomes: [] as string[],
         targetServiceStatus: 'All' as 'All' | 'Active' | 'Expired',
         targetServicePlan: 'All',
         // Schedule
@@ -72,18 +140,27 @@ const Campaigns: React.FC = () => {
             // Basic Checks
             if (!l.email || !l.email.includes('@')) return false;
 
-            const matchesStatus = newCampaign.targetStatus === 'All' || l.status === newCampaign.targetStatus;
-            const matchesAgent = newCampaign.targetAgentId === 'All' || l.assignedAgentId === newCampaign.targetAgentId;
+            const matchesStatus = newCampaign.targetStatuses.length > 0
+                ? newCampaign.targetStatuses.includes(l.status)
+                : (newCampaign.targetStatus === 'All' || l.status === newCampaign.targetStatus);
+            const matchesAgent = newCampaign.targetAgentIds.length > 0
+                ? newCampaign.targetAgentIds.includes(l.assignedAgentId)
+                : (newCampaign.targetAgentId === 'All' || l.assignedAgentId === newCampaign.targetAgentId);
 
             // Outcome Filter
             let matchesOutcome = true;
-            if (newCampaign.targetOutcome !== 'All') {
+            if (newCampaign.targetOutcomes.length > 0 || newCampaign.targetOutcome !== 'All') {
                 const callNotes = l.notes
                     .filter(n => n.content.includes('Call logged. Outcome: '))
                     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
                 if (callNotes.length === 0) matchesOutcome = false;
-                else matchesOutcome = callNotes[0].content.split('Outcome: ')[1].trim() === newCampaign.targetOutcome;
+                else {
+                    const lastOutcome = callNotes[0].content.split('Outcome: ')[1].trim();
+                    matchesOutcome = newCampaign.targetOutcomes.length > 0
+                        ? newCampaign.targetOutcomes.includes(lastOutcome)
+                        : lastOutcome === newCampaign.targetOutcome;
+                }
             }
 
             // Service Filter
@@ -119,8 +196,11 @@ const Campaigns: React.FC = () => {
             previewText: newCampaign.previewText,
             // Targeting
             targetStatus: newCampaign.targetStatus,
+            targetStatuses: newCampaign.targetStatuses,
             targetAgentId: newCampaign.targetAgentId,
+            targetAgentIds: newCampaign.targetAgentIds,
             targetOutcome: newCampaign.targetOutcome,
+            targetOutcomes: newCampaign.targetOutcomes,
             targetServiceStatus: newCampaign.targetServiceStatus,
             targetServicePlan: newCampaign.targetServicePlan,
             // Schedule
@@ -138,8 +218,11 @@ const Campaigns: React.FC = () => {
             templateId: '',
             previewText: '',
             targetStatus: 'All',
+            targetStatuses: [],
             targetAgentId: 'All',
+            targetAgentIds: [],
             targetOutcome: 'All',
+            targetOutcomes: [],
             targetServiceStatus: 'All',
             targetServicePlan: 'All',
             scheduledAt: '',
@@ -337,43 +420,35 @@ const Campaigns: React.FC = () => {
 
                                     {/* Standard Filters */}
                                     <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-xs font-bold text-textSecondary mb-1">Status</label>
-                                            <select
-                                                value={newCampaign.targetStatus}
-                                                onChange={(e) => setNewCampaign({ ...newCampaign, targetStatus: e.target.value })}
-                                                className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary outline-none bg-white text-black text-sm"
-                                            >
-                                                <option value="All">All Statuses</option>
-                                                {statuses.map(s => <option key={s} value={s}>{s}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-textSecondary mb-1">Agent</label>
-                                            <select
-                                                value={newCampaign.targetAgentId}
-                                                onChange={(e) => setNewCampaign({ ...newCampaign, targetAgentId: e.target.value })}
-                                                className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary outline-none bg-white text-black text-sm"
-                                            >
-                                                <option value="All">All Agents</option>
-                                                {AGENTS.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                                            </select>
-                                        </div>
+                                        <CheckboxMultiSelect
+                                            label="Status"
+                                            placeholder="All Statuses"
+                                            options={statuses.map(s => ({ value: s, label: s }))}
+                                            values={newCampaign.targetStatuses}
+                                            onChange={(vals) => setNewCampaign({ ...newCampaign, targetStatuses: vals, targetStatus: vals.length === 0 ? 'All' : 'Custom' })}
+                                        />
+                                        <CheckboxMultiSelect
+                                            label="Agent"
+                                            placeholder="All Agents"
+                                            options={AGENTS.map(a => ({ value: a.id, label: a.name }))}
+                                            values={newCampaign.targetAgentIds}
+                                            onChange={(vals) => setNewCampaign({ ...newCampaign, targetAgentIds: vals, targetAgentId: vals.length === 0 ? 'All' : 'Custom' })}
+                                        />
                                     </div>
 
                                     {/* Call Outcome Filter */}
                                     <div>
-                                        <label className="block text-sm font-bold text-textSecondary mb-1 flex items-center gap-2"><Phone size={14} className="text-textMuted" /> Call Outcome</label>
-                                        <select
-                                            value={newCampaign.targetOutcome}
-                                            onChange={(e) => setNewCampaign({ ...newCampaign, targetOutcome: e.target.value })}
-                                            className="w-full px-4 py-2 border border-border rounded-xl focus:ring-2 focus:ring-primary outline-none bg-white text-black"
-                                        >
-                                            <option value="All">All / Any Outcome</option>
-                                            {outcomes.map(o => (
-                                                <option key={o} value={o}>Last Call: {o}</option>
-                                            ))}
-                                        </select>
+                                        <div className="mb-1 flex items-center gap-2">
+                                            <Phone size={14} className="text-textMuted" />
+                                            <span className="text-sm font-bold text-textSecondary">Call Outcome</span>
+                                        </div>
+                                        <CheckboxMultiSelect
+                                            label=""
+                                            placeholder="All / Any Outcome"
+                                            options={outcomes.map(o => ({ value: o, label: `Last Call: ${o}` }))}
+                                            values={newCampaign.targetOutcomes}
+                                            onChange={(vals) => setNewCampaign({ ...newCampaign, targetOutcomes: vals, targetOutcome: vals.length === 0 ? 'All' : 'Custom' })}
+                                        />
                                     </div>
 
                                     {/* Service Filters */}

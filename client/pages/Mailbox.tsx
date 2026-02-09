@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import DOMPurify from 'dompurify';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useMailStore, EmailMessage } from '../stores/mailStore';
 import { io } from 'socket.io-client';
 import { useLeadsStore } from '../stores/leadsStore';
@@ -18,6 +19,8 @@ import {
 } from 'lucide-react';
 
 const Mailbox: React.FC = () => {
+    const location = useLocation();
+    const navigate = useNavigate();
     const { emails, markAsRead, toggleStar, deleteEmail, deleteForever, moveToFolder, updateLabels, fetchEmails, syncEmails, refreshing } = useMailStore();
     const { leads, statuses, addNote } = useLeadsStore();
     const { clients, addClientNote } = useClientsStore();
@@ -269,6 +272,45 @@ const Mailbox: React.FC = () => {
             socket.disconnect();
         };
     }, [selectedAccountId, fetchEmails]);
+
+    useEffect(() => {
+        const params = new URLSearchParams(location.search || '');
+        const targetMessageId = normalizeMessageId(params.get('messageId'));
+        const targetFrom = String(params.get('from') || '').trim().toLowerCase();
+        const targetSubject = String(params.get('subject') || '').trim().toLowerCase();
+
+        if (!targetMessageId && !targetFrom && !targetSubject) return;
+        if (!Array.isArray(emails) || emails.length === 0) return;
+
+        let matched = targetMessageId
+            ? emails.find((e) => normalizeMessageId((e as any).messageId) === targetMessageId)
+            : undefined;
+
+        if (!matched && targetFrom && targetSubject) {
+            matched = emails.find((e) =>
+                String((e as any).from || '').toLowerCase() === targetFrom &&
+                String((e as any).subject || '').trim().toLowerCase() === targetSubject
+            );
+        }
+
+        if (!matched) return;
+
+        setSelectedEmailId(matched.id);
+
+        const folder = String((matched as any).folder || '').toUpperCase();
+        if (folder === 'SENT') setSelectedFolder('Sent');
+        else if (folder === 'TRASH' || folder === 'DELETED') setSelectedFolder('Trash');
+        else if (String((matched as any).folder || '') === 'Clients') setSelectedFolder('Clients');
+        else if (statuses.includes(String((matched as any).folder || ''))) setSelectedFolder(String((matched as any).folder || ''));
+        else if (availableLabels.includes(String((matched as any).folder || ''))) setSelectedFolder(String((matched as any).folder || ''));
+        else setSelectedFolder('General');
+
+        if (!matched.isRead) {
+            markAsRead(matched.id);
+        }
+
+        navigate('/mailbox', { replace: true });
+    }, [location.search, emails, statuses, availableLabels, navigate, markAsRead]);
 
     // Derived Labels (from Settings + existing emails)
     const availableLabels = useMemo(() => {

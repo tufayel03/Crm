@@ -2,6 +2,7 @@ const { ImapFlow } = require('imapflow');
 const { simpleParser } = require('mailparser');
 const Settings = require('../models/Settings');
 const MailMessage = require('../models/MailMessage');
+const Campaign = require('../models/Campaign');
 const SyncState = require('../models/SyncState');
 const Lead = require('../models/Lead');
 const Client = require('../models/Client');
@@ -296,6 +297,32 @@ class MailSyncService {
       { $set: emailParams },
       { upsert: true }
     );
+
+    const replyIds = Array.from(
+      new Set([normalizedInReplyTo, ...normalizedReferences].filter(Boolean))
+    );
+
+    if (replyIds.length > 0) {
+      await Campaign.updateOne(
+        {
+          queue: {
+            $elemMatch: {
+              sentMessageId: { $in: replyIds },
+              repliedAt: null
+            }
+          }
+        },
+        {
+          $set: {
+            'queue.$.repliedAt': emailParams.timestamp || new Date(),
+            'queue.$.repliedMessageId': messageId || undefined,
+            'queue.$.replyFrom': emailParams.from || '',
+            'queue.$.replySubject': emailParams.subject || ''
+          },
+          $inc: { replyCount: 1 }
+        }
+      );
+    }
 
     // REAL-TIME PUSH
     if (this.io) {

@@ -13,6 +13,9 @@ interface CreateCampaignDTO {
   targetStatus: string;
   targetAgentId: string;
   targetOutcome: string;
+  targetStatuses?: string[];
+  targetAgentIds?: string[];
+  targetOutcomes?: string[];
   targetServiceStatus: 'All' | 'Active' | 'Expired';
   targetServicePlan: string;
   previewText?: string;
@@ -184,19 +187,36 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     const leads = useLeadsStore.getState().leads;
     const clients = useClientsStore.getState().clients;
 
+    const selectedStatuses = Array.isArray(data.targetStatuses) ? data.targetStatuses.filter(Boolean) : [];
+    const selectedAgents = Array.isArray(data.targetAgentIds) ? data.targetAgentIds.filter(Boolean) : [];
+    const selectedOutcomes = Array.isArray(data.targetOutcomes) ? data.targetOutcomes.filter(Boolean) : [];
+
     const recipients = leads.filter(l => {
       if (!l.email || !l.email.includes('@')) return false;
-      if (data.targetStatus !== 'All' && l.status !== data.targetStatus) return false;
-      if (data.targetAgentId !== 'All' && l.assignedAgentId !== data.targetAgentId) return false;
 
-      if (data.targetOutcome !== 'All') {
+      const matchesStatus = selectedStatuses.length > 0
+        ? selectedStatuses.includes(l.status)
+        : (data.targetStatus === 'All' || l.status === data.targetStatus);
+      if (!matchesStatus) return false;
+
+      const matchesAgent = selectedAgents.length > 0
+        ? selectedAgents.includes(l.assignedAgentId)
+        : (data.targetAgentId === 'All' || l.assignedAgentId === data.targetAgentId);
+      if (!matchesAgent) return false;
+
+      const needsOutcomeFilter = selectedOutcomes.length > 0 || data.targetOutcome !== 'All';
+      if (needsOutcomeFilter) {
         const callNotes = l.notes
           .filter(n => n.content.includes('Call logged. Outcome: '))
           .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
         if (callNotes.length === 0) return false;
         const lastOutcome = callNotes[0].content.split('Outcome: ')[1].trim();
-        if (lastOutcome !== data.targetOutcome) return false;
+        if (selectedOutcomes.length > 0) {
+          if (!selectedOutcomes.includes(lastOutcome)) return false;
+        } else if (lastOutcome !== data.targetOutcome) {
+          return false;
+        }
       }
 
       if (data.targetServiceStatus !== 'All') {
@@ -257,8 +277,11 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       templateName: data.templateName,
       status: isScheduled ? 'Scheduled' : 'Queued',
       targetStatus: data.targetStatus,
+      targetStatuses: selectedStatuses,
       targetAgentId: data.targetAgentId,
+      targetAgentIds: selectedAgents,
       targetOutcome: data.targetOutcome,
+      targetOutcomes: selectedOutcomes,
       targetServiceStatus: data.targetServiceStatus,
       targetServicePlan: data.targetServicePlan,
       totalRecipients: uniqueRecipients.size,
@@ -266,6 +289,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       failedCount: 0,
       openCount: 0,
       clickCount: 0,
+      replyCount: 0,
       createdAt: new Date().toISOString(),
       queue: queue,
       previewText: data.previewText,
@@ -293,6 +317,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       failedCount: 0,
       openCount: 0,
       clickCount: 0,
+      replyCount: 0,
       createdAt: new Date().toISOString(),
       completedAt: undefined,
       scheduledAt: undefined
@@ -406,4 +431,3 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     }
   }
 }));
-

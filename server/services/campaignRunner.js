@@ -8,6 +8,7 @@ const Lead = require('../models/Lead');
 const Client = require('../models/Client');
 const { applyTemplateTokens } = require('../utils/templateTokens');
 const { buildInlineLogo } = require('../utils/inlineLogo');
+const { normalizeMessageId } = require('../utils/mailThread');
 
 const runBatchForCampaign = async (campaign, batchSize = 20) => {
   // 1. Check Global Rate Limits
@@ -156,7 +157,7 @@ const runBatchForCampaign = async (campaign, batchSize = 20) => {
       const htmlWithPixel = injectOpenPixel(htmlWithTokens, campaignId, item.trackingId, baseUrl);
       const htmlTracked = wrapClickTracking(htmlWithPixel, campaignId, item.trackingId, baseUrl);
 
-      await sendMail({
+      const mailInfo = await sendMail({
         to: item.leadEmail,
         subject,
         html: htmlTracked,
@@ -164,6 +165,7 @@ const runBatchForCampaign = async (campaign, batchSize = 20) => {
         account,
         fromName: general.companyName || 'Matlance'
       });
+      const sentMessageId = normalizeMessageId(mailInfo?.messageId);
 
       // Update item status to Sent
       await Campaign.updateOne(
@@ -171,7 +173,8 @@ const runBatchForCampaign = async (campaign, batchSize = 20) => {
         {
           $set: {
             "queue.$[elem].status": 'Sent',
-            "queue.$[elem].sentAt": new Date()
+            "queue.$[elem].sentAt": new Date(),
+            "queue.$[elem].sentMessageId": sentMessageId || undefined
           },
           $inc: { sentCount: 1 }
         },
