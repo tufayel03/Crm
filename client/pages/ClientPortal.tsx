@@ -1,29 +1,63 @@
 
-import React, { useMemo } from 'react';
-import { useClientsStore } from '../stores/clientsStore';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { generateInvoicePDF } from '../utils/pdfGenerator';
+import { apiRequest } from '../utils/api';
+import { Client, Payment } from '../types';
 import { 
   Briefcase, Globe, Mail, User, Clock, Hash, 
   CreditCard, CheckCircle2, Calendar, Download
 } from 'lucide-react';
 
 const ClientPortal: React.FC = () => {
-  const { clients, payments } = useClientsStore();
   const { user } = useAuthStore();
   const { generalSettings } = useSettingsStore();
+  const [client, setClient] = useState<Client | null>(null);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Find the client record associated with the logged-in user
-  const client = useMemo(() => {
-    if (!user) return null;
-    const found = clients.find(c => c.email.toLowerCase() === user.email.toLowerCase());
-    return found || clients[0]; // Fallback for demo
-  }, [clients, user]);
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadPortalData = async () => {
+      if (!user) {
+        if (isMounted) {
+          setClient(null);
+          setPayments([]);
+          setLoading(false);
+        }
+        return;
+      }
+
+      try {
+        setLoading(true);
+        const [clientRes, paymentsRes] = await Promise.all([
+          apiRequest<Client>('/api/v1/clients/me'),
+          apiRequest<Payment[]>('/api/v1/payments/me')
+        ]);
+        if (!isMounted) return;
+        setClient(clientRes || null);
+        setPayments(Array.isArray(paymentsRes) ? paymentsRes : []);
+      } catch {
+        if (!isMounted) return;
+        setClient(null);
+        setPayments([]);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    loadPortalData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
 
   const clientPayments = useMemo(() => {
     if (!client) return [];
-    return payments.filter(p => p.clientId === client.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return [...payments].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [payments, client]);
 
   // Calculations
@@ -39,6 +73,14 @@ const ClientPortal: React.FC = () => {
       const due = clientPayments.find(p => p.status === 'Due' || p.status === 'Overdue');
       return due ? new Date(due.dueDate || due.date) : null;
   }, [clientPayments]);
+
+  if (loading) {
+      return (
+          <div className="p-12 text-center text-textSecondary">
+              Loading your portal...
+          </div>
+      );
+  }
 
   if (!client) {
       return (

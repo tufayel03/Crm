@@ -5,6 +5,7 @@ const { protect, authorize } = require('../middleware/auth');
 const asyncHandler = require('../utils/asyncHandler');
 const {
   getClients,
+  getMyClient,
   createClient,
   updateClient,
   deleteClients,
@@ -27,7 +28,9 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024, files: 1 }
 });
 
-router.use(protect, authorize('admin', 'manager', 'agent'));
+router.use(protect);
+router.get('/me', authorize('admin', 'manager', 'agent', 'client'), asyncHandler(getMyClient));
+router.use(authorize('admin', 'manager', 'agent'));
 
 router.route('/')
   .get(asyncHandler(getClients))

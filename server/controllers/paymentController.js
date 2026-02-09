@@ -23,6 +23,35 @@ exports.getPayments = async (req, res) => {
   res.json(payments);
 };
 
+exports.getMyPayments = async (req, res) => {
+  const normalizedEmail = String(req.user?.email || '').toLowerCase().trim();
+  if (!normalizedEmail) {
+    return res.status(400).json({ message: 'User email not found' });
+  }
+
+  let client = await Client.findOne({ email: normalizedEmail }).select('_id');
+  if (!client) {
+    client = await Client.findOne({
+      email: { $regex: `^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' }
+    }).select('_id');
+  }
+  if (!client) {
+    client = await Client.findOne({
+      $expr: {
+        $eq: [
+          { $toLower: { $trim: { input: '$email' } } },
+          normalizedEmail
+        ]
+      }
+    }).select('_id');
+  }
+
+  if (!client) return res.json([]);
+
+  const payments = await Payment.find({ clientId: client._id }).sort({ createdAt: -1 });
+  res.json(payments);
+};
+
 exports.createPayment = async (req, res) => {
   const payload = { ...req.body };
   if (!isValidInvoiceId(payload.invoiceId)) {

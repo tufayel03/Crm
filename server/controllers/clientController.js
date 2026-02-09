@@ -20,6 +20,36 @@ exports.getClients = async (req, res) => {
   res.json(clients);
 };
 
+exports.getMyClient = async (req, res) => {
+  const normalizedEmail = String(req.user?.email || '').toLowerCase().trim();
+  if (!normalizedEmail) {
+    return res.status(400).json({ message: 'User email not found' });
+  }
+
+  let client = await Client.findOne({ email: normalizedEmail });
+  if (!client) {
+    client = await Client.findOne({
+      email: { $regex: `^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' }
+    });
+  }
+  if (!client) {
+    client = await Client.findOne({
+      $expr: {
+        $eq: [
+          { $toLower: { $trim: { input: '$email' } } },
+          normalizedEmail
+        ]
+      }
+    });
+  }
+
+  if (!client) {
+    return res.status(404).json({ message: 'No client profile linked to this account' });
+  }
+
+  res.json(client);
+};
+
 exports.createClient = async (req, res) => {
   const { companyName, contactName, profession, email, leadId } = req.body;
   if (!contactName) return res.status(400).json({ message: 'Contact name is required' });
