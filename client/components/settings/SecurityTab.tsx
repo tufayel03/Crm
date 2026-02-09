@@ -1,9 +1,11 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useAuthStore } from '../../stores/authStore';
+import { apiRequest } from '../../utils/api';
 import { 
   Shield, Smartphone, LogOut, CheckCircle2, AlertTriangle, 
-  MapPin, Loader2, Laptop, Globe, Crosshair, ChevronLeft, 
+  MapPin, Laptop, Globe, ChevronLeft, 
   ChevronRight, X, AlertOctagon, Activity, Server,
 } from 'lucide-react';
 
@@ -18,14 +20,16 @@ interface Session {
   lastActive: string;
   isCurrent: boolean;
   status: 'active' | 'idle';
-  isTracking?: boolean;
-  trackingError?: string;
+  userName?: string;
+  userEmail?: string;
+  userRole?: string;
 }
 
 const ITEMS_PER_PAGE = 8;
 
 const SecurityTab: React.FC = () => {
   const { ipRules, updateIpRuleMode, addIpToRule, removeIpFromRule } = useSettingsStore();
+  const { role } = useAuthStore();
   
   // Navigation State
   const [activeSection, setActiveSection] = useState<'sessions' | 'ip_rules'>('sessions');
@@ -33,6 +37,7 @@ const SecurityTab: React.FC = () => {
   // Data State
   const [currentIp, setCurrentIp] = useState<string>('Loading...');
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [summary, setSummary] = useState<{ totalSessions: number; totalUsersActive: number }>({ totalSessions: 0, totalUsersActive: 0 });
   const [currentPage, setCurrentPage] = useState(1);
   
   const [ipInput, setIpInput] = useState('');
@@ -55,6 +60,12 @@ const SecurityTab: React.FC = () => {
 
   const closeConfirm = () => setConfirmModal(prev => ({ ...prev, isOpen: false }));
 
+  const loadSessions = async () => {
+    const data = await apiRequest<{ sessions: Session[]; summary: { totalSessions: number; totalUsersActive: number } }>('/api/v1/sessions');
+    setSessions(Array.isArray(data.sessions) ? data.sessions : []);
+    setSummary(data.summary || { totalSessions: 0, totalUsersActive: 0 });
+  };
+
   // --- Initialization & Real IP Fetching ---
   useEffect(() => {
     const initData = async () => {
@@ -70,80 +81,27 @@ const SecurityTab: React.FC = () => {
             setCurrentIp('Unavailable');
         }
 
-        // 2. Detect Current Device Info
-        const ua = navigator.userAgent;
-        let os = "Unknown OS";
-        if (ua.indexOf("Win") !== -1) os = "Windows";
-        if (ua.indexOf("Mac") !== -1) os = "MacOS";
-        if (ua.indexOf("Linux") !== -1) os = "Linux";
-        if (ua.indexOf("Android") !== -1) os = "Android";
-        if (ua.indexOf("like Mac") !== -1) os = "iOS";
-
-        let browser = "Unknown Browser";
-        if (ua.indexOf("Chrome") !== -1) browser = "Chrome";
-        else if (ua.indexOf("Safari") !== -1) browser = "Safari";
-        else if (ua.indexOf("Firefox") !== -1) browser = "Firefox";
-        else if (ua.indexOf("Edg") !== -1) browser = "Edge";
-
-        const currentSession: Session = {
-            id: 'current-session',
-            device: `${os} Device`,
-            browser: browser,
-            os: os,
-            ip: realIp, // Use real IP
-            location: 'Current Location',
-            lastActive: 'Now',
-            isCurrent: true,
-            status: 'active'
-        };
-
-        // Removed mock sessions logic
-        setSessions([currentSession]);
+        await loadSessions();
     };
 
     initData();
   }, []);
 
+  useEffect(() => {
+    if (activeSection !== 'sessions') return;
+    const timer = setInterval(() => {
+      loadSessions().catch(() => {});
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [activeSection]);
+
   // --- Handlers ---
 
   const handleLogoutSession = (id: string) => {
     if (window.confirm('Revoke this session? User will be logged out.')) {
-        setSessions(prev => prev.filter(s => s.id !== id));
-    }
-  };
-
-  const handleTrackLocation = (id: string) => {
-    setSessions(prev => prev.map(s => s.id === id ? { ...s, isTracking: true, trackingError: undefined } : s));
-    const session = sessions.find(s => s.id === id);
-    if (!session) return;
-
-    if (session.isCurrent) {
-        if (!navigator.geolocation) {
-            setSessions(prev => prev.map(s => s.id === id ? { ...s, isTracking: false, trackingError: 'Not supported' } : s));
-            return;
-        }
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                setSessions(prev => prev.map(s => s.id === id ? { 
-                    ...s, 
-                    isTracking: false, 
-                    location: 'Precise Location Shared',
-                    coords: { lat: pos.coords.latitude, lng: pos.coords.longitude }
-                } : s));
-            },
-            (err) => {
-                setSessions(prev => prev.map(s => s.id === id ? { ...s, isTracking: false, trackingError: 'Denied' } : s));
-            }
-        );
-    } else {
-        setTimeout(() => {
-            setSessions(prev => prev.map(s => s.id === id ? { 
-                ...s, 
-                isTracking: false, 
-                location: 'Precise Location Received',
-                coords: s.coords || { lat: 0, lng: 0 }
-            } : s));
-        }, 1500);
+        apiRequest(`/api/v1/sessions/${id}`, { method: 'DELETE' })
+          .then(() => loadSessions())
+          .catch(() => {});
     }
   };
 
@@ -262,7 +220,12 @@ const SecurityTab: React.FC = () => {
             <div className="p-6 border-b border-border flex justify-between items-center">
                 <div>
                     <h3 className="text-lg font-bold text-textPrimary flex items-center gap-2"><Shield size={20} className="text-primary"/> Active Sessions</h3>
-                    <p className="text-sm text-textSecondary">Manage devices logged into your account.</p>
+                    <p className="text-sm text-textSecondary">
+                      {role === 'admin' ? 'Monitor all active users and devices across CRM.' : 'Manage devices logged into your account.'}
+                    </p>
+                    <p className="text-xs text-textMuted mt-1">
+                      Active Sessions: {summary.totalSessions} {role === 'admin' ? `| Active Users: ${summary.totalUsersActive}` : ''}
+                    </p>
                 </div>
             </div>
             <div className="overflow-x-auto">
@@ -290,16 +253,15 @@ const SecurityTab: React.FC = () => {
                                                 {session.isCurrent && <span className="text-[10px] bg-primary/20 text-darkGreen px-1.5 rounded">YOU</span>}
                                             </p>
                                             <p className="text-xs text-textSecondary">{session.browser} on {session.os}</p>
+                                            {role === 'admin' && (
+                                              <p className="text-xs text-textMuted">{session.userName || 'Unknown'} ({session.userEmail || 'No email'})</p>
+                                            )}
                                         </div>
                                     </div>
                                 </td>
                                 <td className="px-6 py-4 font-mono text-textSecondary">{session.ip}</td>
                                 <td className="px-6 py-4">
-                                    {session.trackingError ? (
-                                        <span className="text-danger text-xs flex items-center gap-1"><AlertTriangle size={12}/> {session.trackingError}</span>
-                                    ) : session.isTracking ? (
-                                        <span className="text-primary text-xs font-bold flex items-center gap-1"><Loader2 size={12} className="animate-spin"/> Pinging...</span>
-                                    ) : session.coords ? (
+                                    {session.coords ? (
                                         <div className="flex flex-col">
                                             <span className="text-xs text-darkGreen font-bold flex items-center gap-1"><CheckCircle2 size={12}/> Exact</span>
                                             <a href={`https://maps.google.com/?q=${session.coords.lat},${session.coords.lng}`} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-xs flex items-center gap-1"><MapPin size={10}/> Map</a>
@@ -308,12 +270,11 @@ const SecurityTab: React.FC = () => {
                                         <span className="text-textSecondary text-xs">{session.location}</span>
                                     )}
                                 </td>
-                                <td className="px-6 py-4 text-xs text-textSecondary">{session.lastActive}</td>
+                                <td className="px-6 py-4 text-xs text-textSecondary">
+                                  {session.lastActive ? new Date(session.lastActive).toLocaleString() : 'Now'}
+                                </td>
                                 <td className="px-6 py-4 text-right">
                                     <div className="flex justify-end gap-2">
-                                        {!session.coords && !session.isTracking && (
-                                            <button onClick={() => handleTrackLocation(session.id)} className="p-1.5 border rounded hover:bg-slate-50 text-blue-600" title="Track Location"><Crosshair size={14}/></button>
-                                        )}
                                         {!session.isCurrent && (
                                             <button onClick={() => handleLogoutSession(session.id)} className="p-1.5 border rounded hover:bg-red-50 text-danger" title="Revoke"><LogOut size={14}/></button>
                                         )}

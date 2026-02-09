@@ -7,7 +7,7 @@ interface AuthState {
   role: Role | null;
   isAuthenticated: boolean;
   isReady: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, sessionMeta?: any) => Promise<void>;
   logout: () => void;
   initialize: () => Promise<void>;
 }
@@ -18,10 +18,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   isAuthenticated: false,
   isReady: false,
 
-  login: async (email, password) => {
+  login: async (email, password, sessionMeta) => {
     const data = await apiRequest<{ token: string; user: User }>('/api/v1/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ email, password, sessionMeta })
     });
     setAuthToken(data.token);
     set({ user: data.user, role: data.user.role, isAuthenticated: true, isReady: true });

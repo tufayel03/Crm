@@ -4,6 +4,57 @@ import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { ShieldAlert, Loader2 } from 'lucide-react';
 
+const getDeviceMeta = () => {
+  const ua = navigator.userAgent || '';
+  let os = 'Unknown OS';
+  if (/Android/i.test(ua)) os = 'Android';
+  else if (/iPhone|iPad|iPod/i.test(ua)) os = 'iOS';
+  else if (/Win/i.test(ua)) os = 'Windows';
+  else if (/Mac/i.test(ua)) os = 'MacOS';
+  else if (/Linux/i.test(ua)) os = 'Linux';
+
+  let browser = 'Unknown Browser';
+  if (/Edg\//i.test(ua)) browser = 'Edge';
+  else if (/Chrome\//i.test(ua)) browser = 'Chrome';
+  else if (/Safari\//i.test(ua) && !/Chrome\//i.test(ua)) browser = 'Safari';
+  else if (/Firefox\//i.test(ua)) browser = 'Firefox';
+
+  return {
+    os,
+    browser,
+    device: `${os} Device`
+  };
+};
+
+const requestGeo = async () => {
+  if (!navigator.geolocation) {
+    throw new Error('Geolocation is required on this device.');
+  }
+
+  let permissionState = 'unknown';
+  try {
+    if (navigator.permissions?.query) {
+      const p = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+      permissionState = p.state;
+      if (p.state === 'denied') {
+        throw new Error('Location permission is required. Please allow location in browser settings.');
+      }
+    }
+  } catch {
+    // continue to geolocation request
+  }
+
+  const coords = await new Promise<{ lat: number; lng: number }>((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => reject(new Error('Location permission is required to sign in.')),
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 5 * 60 * 1000 }
+    );
+  });
+
+  return { coords, locationPermission: permissionState === 'unknown' ? 'granted' : permissionState };
+};
+
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -26,7 +77,12 @@ const Login: React.FC = () => {
     setIsLoading(true);
     
     try {
-        await login(email, password);
+        const deviceMeta = getDeviceMeta();
+        const geoMeta = await requestGeo();
+        await login(email, password, {
+          ...deviceMeta,
+          ...geoMeta
+        });
 
         const from = (location.state as any)?.from?.pathname;
         if (useAuthStore.getState().role === 'client') {
@@ -119,6 +175,7 @@ const Login: React.FC = () => {
         <div className="mt-8 pt-6 border-t border-border text-center">
           <div className="space-y-2">
             <p className="text-sm text-textMuted">Protected by Matlance Security</p>
+            <p className="text-xs text-textMuted">Location access is mandatory for secure sign-in and session monitoring.</p>
             <p className="text-xs text-textMuted">
               Client access? <Link to="/register" className="text-primary font-bold hover:underline">Request registration</Link>
             </p>

@@ -1,5 +1,6 @@
-﻿const jwt = require('jsonwebtoken');
+const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const UserSession = require('../models/UserSession');
 
 const protect = async (req, res, next) => {
   let token = null;
@@ -14,6 +15,17 @@ const protect = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const sessionId = decoded?.sid;
+
+    if (sessionId) {
+      const session = await UserSession.findById(sessionId).select('_id userId revokedAt');
+      if (!session || session.revokedAt || String(session.userId) !== String(decoded.id)) {
+        return res.status(401).json({ message: 'Session expired or revoked' });
+      }
+      await UserSession.updateOne({ _id: sessionId }, { $set: { lastActive: new Date() } });
+      req.sessionId = String(sessionId);
+    }
+
     const user = await User.findById(decoded.id).select('-password');
     if (!user) {
       return res.status(401).json({ message: 'Not authorized, user not found' });
@@ -42,4 +54,3 @@ const authorize = (...roles) => (req, res, next) => {
 };
 
 module.exports = { protect, authorize };
-

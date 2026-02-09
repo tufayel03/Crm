@@ -2,15 +2,18 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
-import { Role } from '../types';
+import { PermissionResource, Role } from '../types';
+import { usePermissions } from '../hooks/usePermissions';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   allowedRoles?: Role[];
+  requiredPermission?: PermissionResource;
 }
 
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles }) => {
+const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles, requiredPermission }) => {
   const { isAuthenticated, role, isReady } = useAuthStore();
+  const { can } = usePermissions();
   const location = useLocation();
 
   if (!isReady) {
@@ -22,6 +25,10 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles 
   }
 
   if (allowedRoles && role && !allowedRoles.includes(role)) {
+    return <Navigate to={role === 'client' ? '/portal' : '/dashboard'} replace />;
+  }
+
+  if (requiredPermission && !can('view', requiredPermission)) {
     return <Navigate to={role === 'client' ? '/portal' : '/dashboard'} replace />;
   }
 

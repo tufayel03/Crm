@@ -2,12 +2,15 @@
 import React from 'react';
 import { useCampaignStore } from '../../stores/campaignStore';
 import { Link } from 'react-router-dom';
+import { usePermissions } from '../../hooks/usePermissions';
 import {
     Play, Pause, Trash2, Clock, Copy, Users, Rocket, Zap, Eye
 } from 'lucide-react';
 
 const ActiveCampaignsList: React.FC = () => {
     const { campaigns, toggleCampaignStatus, deleteCampaign, cloneCampaign, startCampaignNow } = useCampaignStore();
+    const { can } = usePermissions();
+    const canManageCampaigns = can('manage', 'campaigns');
 
     // Filter active statuses
     const activeCampaigns = campaigns.filter(c =>
@@ -76,6 +79,7 @@ const ActiveCampaignsList: React.FC = () => {
                                 </Link>
                                 {/* START NOW BUTTON FOR SCHEDULED */}
                                 {camp.status === 'Scheduled' && (
+                                    canManageCampaigns && (
                                     <button
                                         onClick={() => startCampaignNow(camp.id)}
                                         className="flex items-center gap-1 px-3 py-2 bg-purple-50 text-purple-700 font-bold rounded-lg border border-purple-200 hover:bg-purple-100 transition-colors"
@@ -83,9 +87,11 @@ const ActiveCampaignsList: React.FC = () => {
                                     >
                                         <Zap size={16} /> Start Now
                                     </button>
+                                    )
                                 )}
 
                                 {camp.status === 'Sending' && (
+                                    canManageCampaigns && (
                                     <button
                                         onClick={() => toggleCampaignStatus(camp.id, 'pause')}
                                         className="p-2 bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-100 transition-colors border border-orange-200"
@@ -93,8 +99,10 @@ const ActiveCampaignsList: React.FC = () => {
                                     >
                                         <Pause size={18} />
                                     </button>
+                                    )
                                 )}
                                 {(camp.status === 'Paused' || camp.status === 'Queued' || camp.status === 'Scheduled') && (
+                                    canManageCampaigns && (
                                     <button
                                         onClick={() => toggleCampaignStatus(camp.id, 'resume')}
                                         className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors border border-blue-200"
@@ -102,21 +110,26 @@ const ActiveCampaignsList: React.FC = () => {
                                     >
                                         <Play size={18} />
                                     </button>
+                                    )
                                 )}
-                                <button
-                                    onClick={() => cloneCampaign(camp.id)}
-                                    className="p-2 bg-slate-50 text-textSecondary rounded-lg hover:bg-slate-100 transition-colors border border-border"
-                                    title="Clone Campaign"
-                                >
-                                    <Copy size={18} />
-                                </button>
-                                <button
-                                    onClick={() => deleteCampaign(camp.id)}
-                                    className="p-2 bg-red-50 text-danger rounded-lg hover:bg-red-100 transition-colors border border-red-200"
-                                    title="Delete"
-                                >
-                                    <Trash2 size={18} />
-                                </button>
+                                {canManageCampaigns && (
+                                    <button
+                                        onClick={() => cloneCampaign(camp.id)}
+                                        className="p-2 bg-slate-50 text-textSecondary rounded-lg hover:bg-slate-100 transition-colors border border-border"
+                                        title="Clone Campaign"
+                                    >
+                                        <Copy size={18} />
+                                    </button>
+                                )}
+                                {canManageCampaigns && (
+                                    <button
+                                        onClick={() => deleteCampaign(camp.id)}
+                                        className="p-2 bg-red-50 text-danger rounded-lg hover:bg-red-100 transition-colors border border-red-200"
+                                        title="Delete"
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
+                                )}
                             </div>
                         </div>
 

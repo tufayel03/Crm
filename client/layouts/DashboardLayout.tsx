@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Topbar from '../components/Topbar';
 import GlobalCallUI from '../components/GlobalCallUI';
@@ -21,7 +21,7 @@ const DashboardLayout: React.FC = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const toggleSidebar = () => setIsCollapsed(!isCollapsed);
 
-  const { ipRules, fetchSettings } = useSettingsStore();
+  const { ipRules, fetchSettings, fetchPermissions } = useSettingsStore();
   const { logout, user, initialize, isAuthenticated, isReady } = useAuthStore();
   const { connect, disconnect } = useCallStore();
   const { checkReminders, fetchMeetings } = useMeetingsStore();
@@ -33,6 +33,66 @@ const DashboardLayout: React.FC = () => {
   const { fetchMembers } = useTeamStore();
   const { fetchLogs } = useAuditStore();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const getRoleBasedLoaders = () => {
+    const role = user?.role;
+    if (!role) return [] as Array<Promise<unknown>>;
+
+    if (role === 'client') {
+      return [] as Array<Promise<unknown>>;
+    }
+
+    if (role === 'agent') {
+      return [
+        fetchPermissions(),
+        fetchLeadMeta(),
+        fetchLeads(),
+        fetchClients(),
+        fetchPayments(),
+        fetchTasks(),
+        fetchMeetings(),
+        fetchCampaigns(),
+        fetchTemplates(),
+        fetchPlans()
+      ] as Array<Promise<unknown>>;
+    }
+
+    if (role === 'manager') {
+      return [
+        fetchSettings(),
+        fetchPermissions(),
+        fetchLeadMeta(),
+        fetchLeads(),
+        fetchClients(),
+        fetchPayments(),
+        fetchTasks(),
+        fetchMeetings(),
+        fetchCampaigns(),
+        fetchTemplates(),
+        fetchMembers(),
+        fetchLogs(),
+        fetchPlans()
+      ] as Array<Promise<unknown>>;
+    }
+
+    // admin
+    return [
+      fetchSettings(),
+      fetchPermissions(),
+      fetchLeadMeta(),
+      fetchLeads(),
+      fetchClients(),
+      fetchPayments(),
+      fetchTasks(),
+      fetchMeetings(),
+      fetchCampaigns(),
+      fetchTemplates(),
+      fetchMembers(),
+      fetchLogs(),
+      fetchPlans()
+    ] as Array<Promise<unknown>>;
+  };
 
   useEffect(() => {
     if (!isReady) {
@@ -47,46 +107,46 @@ const DashboardLayout: React.FC = () => {
   }, [isAuthenticated, user, connect, disconnect]);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !user) return;
     const load = async () => {
-      await Promise.allSettled([
-        fetchSettings(),
-        fetchLeadMeta(),
-        fetchLeads(),
-        fetchClients(),
-        fetchPayments(),
-        fetchTasks(),
-        fetchMeetings(),
-        fetchCampaigns(),
-        fetchTemplates(),
-        fetchMembers(),
-        fetchLogs(),
-        fetchPlans()
-      ]);
+      const loaders = getRoleBasedLoaders();
+      if (loaders.length === 0) return;
+      await Promise.allSettled(loaders);
     };
     load();
-  }, [isAuthenticated, fetchSettings, fetchLeads, fetchClients, fetchPayments, fetchTasks, fetchMeetings, fetchCampaigns, fetchTemplates, fetchMembers, fetchLogs, fetchPlans]);
+  }, [isAuthenticated, user, location.pathname, fetchSettings, fetchPermissions, fetchLeadMeta, fetchLeads, fetchClients, fetchPayments, fetchTasks, fetchMeetings, fetchCampaigns, fetchTemplates, fetchMembers, fetchLogs, fetchPlans]);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !user) return;
     const interval = setInterval(() => {
-      Promise.allSettled([
-        fetchSettings(),
-        fetchLeadMeta(),
-        fetchLeads(),
-        fetchClients(),
-        fetchPayments(),
-        fetchTasks(),
-        fetchMeetings(),
-        fetchCampaigns(),
-        fetchTemplates(),
-        fetchMembers(),
-        fetchLogs(),
-        fetchPlans()
-      ]);
-    }, 30000);
+      const loaders = getRoleBasedLoaders();
+      if (loaders.length === 0) return;
+      Promise.allSettled(loaders);
+    }, 5000);
     return () => clearInterval(interval);
-  }, [isAuthenticated, fetchSettings, fetchLeads, fetchClients, fetchPayments, fetchTasks, fetchMeetings, fetchCampaigns, fetchTemplates, fetchMembers, fetchLogs, fetchPlans]);
+  }, [isAuthenticated, user, fetchSettings, fetchPermissions, fetchLeadMeta, fetchLeads, fetchClients, fetchPayments, fetchTasks, fetchMeetings, fetchCampaigns, fetchTemplates, fetchMembers, fetchLogs, fetchPlans]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user) return;
+
+    const refreshNow = () => {
+      const loaders = getRoleBasedLoaders();
+      if (loaders.length === 0) return;
+      Promise.allSettled(loaders);
+    };
+
+    const onFocus = () => refreshNow();
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refreshNow();
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [isAuthenticated, user, fetchSettings, fetchPermissions, fetchLeadMeta, fetchLeads, fetchClients, fetchPayments, fetchTasks, fetchMeetings, fetchCampaigns, fetchTemplates, fetchMembers, fetchLogs, fetchPlans]);
 
   useEffect(() => {
     if (!isAuthenticated) return;

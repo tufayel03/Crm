@@ -51,29 +51,29 @@ const App: React.FC = () => {
 
           <Route element={<DashboardLayout />}>
             {/* Executive Dashboard - Restricted to Internal Team */}
-            <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']}><Dashboard /></ProtectedRoute>} />
+            <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']} requiredPermission="dashboard"><Dashboard /></ProtectedRoute>} />
 
             {/* Client Portal Routes */}
             <Route path="/portal" element={<ProtectedRoute allowedRoles={['client']}><ClientPortal /></ProtectedRoute>} />
             <Route path="/client-meetings" element={<ProtectedRoute allowedRoles={['client']}><ClientMeetings /></ProtectedRoute>} />
 
-            <Route path="/mailbox" element={<ProtectedRoute><Mailbox /></ProtectedRoute>} />
+            <Route path="/mailbox" element={<ProtectedRoute requiredPermission="mailbox"><Mailbox /></ProtectedRoute>} />
             <Route path="/analytics" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><Analytics /></ProtectedRoute>} />
-            <Route path="/leads" element={<ProtectedRoute><Leads /></ProtectedRoute>} />
-            <Route path="/leads/:id" element={<ProtectedRoute><LeadDetail /></ProtectedRoute>} />
-            <Route path="/clients" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><Clients /></ProtectedRoute>} />
-            <Route path="/clients/:id" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><ClientDetail /></ProtectedRoute>} />
+            <Route path="/leads" element={<ProtectedRoute requiredPermission="leads"><Leads /></ProtectedRoute>} />
+            <Route path="/leads/:id" element={<ProtectedRoute requiredPermission="leads"><LeadDetail /></ProtectedRoute>} />
+            <Route path="/clients" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']} requiredPermission="clients"><Clients /></ProtectedRoute>} />
+            <Route path="/clients/:id" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']} requiredPermission="clients"><ClientDetail /></ProtectedRoute>} />
             <Route path="/services" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><ServicePlans /></ProtectedRoute>} />
             <Route path="/database" element={<ProtectedRoute allowedRoles={['admin']}><Database /></ProtectedRoute>} />
             <Route path="/error-logs" element={<ProtectedRoute allowedRoles={['admin']}><ErrorLogs /></ProtectedRoute>} />
-            <Route path="/tasks" element={<ProtectedRoute><Tasks /></ProtectedRoute>} />
-            <Route path="/meetings" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']}><Meetings /></ProtectedRoute>} />
+            <Route path="/tasks" element={<ProtectedRoute requiredPermission="tasks"><Tasks /></ProtectedRoute>} />
+            <Route path="/meetings" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']} requiredPermission="meetings"><Meetings /></ProtectedRoute>} />
 
             <Route path="/email-templates" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><EmailTemplates /></ProtectedRoute>} />
-            <Route path="/campaigns" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><Campaigns /></ProtectedRoute>} />
-            <Route path="/campaigns/:id" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><CampaignResults /></ProtectedRoute>} />
-            <Route path="/payments" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><Payments /></ProtectedRoute>} />
-            <Route path="/settings" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent', 'client']}><Settings /></ProtectedRoute>} />
+            <Route path="/campaigns" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']} requiredPermission="campaigns"><Campaigns /></ProtectedRoute>} />
+            <Route path="/campaigns/:id" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']} requiredPermission="campaigns"><CampaignResults /></ProtectedRoute>} />
+            <Route path="/payments" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']} requiredPermission="payments"><Payments /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent', 'client']} requiredPermission="settings"><Settings /></ProtectedRoute>} />
           </Route>
 
           <Route path="/" element={<Navigate to="/portal" replace />} />

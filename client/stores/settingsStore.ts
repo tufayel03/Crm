@@ -49,6 +49,7 @@ interface SettingsState {
   permissions: AccessControlConfig;
 
   fetchSettings: () => Promise<void>;
+  fetchPermissions: () => Promise<void>;
   addEmailAccount: (account: Omit<EmailAccount, 'id' | 'sentCount'> & { isVerified?: boolean }) => Promise<void>;
   removeEmailAccount: (id: string) => Promise<void>;
   updateRouting: (id: string, updates: Partial<Pick<EmailAccount, 'useForCampaigns' | 'useForClients'>>) => Promise<void>;
@@ -111,6 +112,15 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       campaignLimits: data.campaignLimits || DEFAULT_STATE.campaignLimits,
       permissions: mergedPermissions
     });
+  },
+
+  fetchPermissions: async () => {
+    const data = await apiRequest<any>('/api/v1/settings/permissions');
+    const mergedPermissions: AccessControlConfig = {
+      manager: { ...DEFAULT_PERMISSIONS.manager, ...(data.permissions?.manager || {}) },
+      agent: { ...DEFAULT_PERMISSIONS.agent, ...(data.permissions?.agent || {}) }
+    };
+    set({ permissions: mergedPermissions });
   },
 
   addEmailAccount: async (accountData) => {

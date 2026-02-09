@@ -88,6 +88,16 @@ exports.getSettings = async (req, res) => {
   res.json(settings);
 };
 
+exports.getPermissions = async (req, res) => {
+  const settings = await getOrCreateSettings();
+  const current = settings.permissions || {};
+  const permissions = {
+    manager: { ...DEFAULT_PERMISSIONS.manager, ...(current.manager || {}) },
+    agent: { ...DEFAULT_PERMISSIONS.agent, ...(current.agent || {}) }
+  };
+  res.json({ permissions });
+};
+
 exports.updateSettings = async (req, res) => {
   const settings = await getOrCreateSettings();
 

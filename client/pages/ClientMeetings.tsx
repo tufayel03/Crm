@@ -1,12 +1,11 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useMeetingsStore } from '../stores/meetingsStore';
 import { useAuthStore } from '../stores/authStore';
-import { useClientsStore } from '../stores/clientsStore';
+import { apiRequest } from '../utils/api';
 import { 
   Calendar, Video, Clock, CheckCircle2 
 } from 'lucide-react';
-import { Meeting } from '../types';
+import { Meeting, Client } from '../types';
 
 // Buffer time in milliseconds (30 seconds)
 const JOIN_BUFFER_MS = 30000;
@@ -155,22 +154,55 @@ const ClientMeetingCard: React.FC<{ meeting: Meeting; isPast?: boolean }> = ({ m
 };
 
 const ClientMeetings: React.FC = () => {
-  const { meetings } = useMeetingsStore();
   const { user } = useAuthStore();
-  const { clients } = useClientsStore();
+  const [client, setClient] = useState<Client | null>(null);
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming');
 
-  // Find current client ID based on user email
-  const client = useMemo(() => clients.find(c => c.email.toLowerCase() === user?.email.toLowerCase()), [clients, user]);
+  useEffect(() => {
+      let isMounted = true;
+
+      const loadData = async () => {
+          if (!user) {
+              if (isMounted) {
+                  setClient(null);
+                  setMeetings([]);
+                  setLoading(false);
+              }
+              return;
+          }
+
+          try {
+              setLoading(true);
+              const [clientRes, meetingsRes] = await Promise.all([
+                  apiRequest<Client>('/api/v1/clients/me'),
+                  apiRequest<Meeting[]>('/api/v1/meetings/me')
+              ]);
+              if (!isMounted) return;
+              setClient(clientRes || null);
+              setMeetings(Array.isArray(meetingsRes) ? meetingsRes : []);
+          } catch {
+              if (!isMounted) return;
+              setClient(null);
+              setMeetings([]);
+          } finally {
+              if (isMounted) setLoading(false);
+          }
+      };
+
+      loadData();
+      return () => {
+          isMounted = false;
+      };
+  }, [user]);
 
   const { upcomingMeetings, pastMeetings } = useMemo(() => {
-      if (!client) return { upcomingMeetings: [], pastMeetings: [] };
       const now = new Date();
       const upcoming: Meeting[] = [];
       const past: Meeting[] = [];
 
       meetings.forEach(m => {
-          const isMyMeeting = m.leadId === client.id;
-          if (!isMyMeeting) return;
           const meetingDate = buildMeetingDate(m);
           if (!meetingDate) return;
           const isPast = meetingDate.getTime() < (now.getTime() - 3600000) || m.status === 'Completed' || m.status === 'Cancelled';
@@ -182,13 +214,20 @@ const ClientMeetings: React.FC = () => {
       past.sort((a, b) => (buildMeetingDate(b)?.getTime() || 0) - (buildMeetingDate(a)?.getTime() || 0));
 
       return { upcomingMeetings: upcoming, pastMeetings: past };
-  }, [meetings, client]);
+  }, [meetings]);
 
-  if (!client) {
+  if (loading) {
       return <div className="p-8 text-center">Loading client profile...</div>;
   }
 
-  const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming');
+  if (!client) {
+      return (
+          <div className="p-8 text-center">
+              <h2 className="text-lg font-bold text-textPrimary">No Account Found</h2>
+              <p className="text-textSecondary">We couldn't associate your login with a client profile.</p>
+          </div>
+      );
+  }
 
   return (
     <div className="space-y-8 pb-20">

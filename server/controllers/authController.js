@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const User = require('../models/User');
+const UserSession = require('../models/UserSession');
 const Client = require('../models/Client');
 const AuditLog = require('../models/AuditLog');
 const Settings = require('../models/Settings');
@@ -14,8 +15,9 @@ const getTrustedBaseUrl = (req) => {
   return `${req.protocol}://${req.get('host')}`;
 };
 
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '7d' });
+const generateToken = (id, sid) => {
+  const payload = sid ? { id, sid } : { id };
+  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '7d' });
 };
 
 const logLoginError = async (email, message, userId) => {
@@ -32,7 +34,7 @@ const logLoginError = async (email, message, userId) => {
 };
 
 exports.login = async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, sessionMeta } = req.body;
   if (!email || !password) {
     await logLoginError(email, 'Email and password required');
     return res.status(400).json({ message: 'Email and password required' });
@@ -62,7 +64,33 @@ exports.login = async (req, res) => {
   user.lastActive = new Date();
   await user.save();
 
-  const token = generateToken(user._id);
+  const coords = sessionMeta?.coords;
+  const hasCoords = coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lng);
+  const locationPermission = String(sessionMeta?.locationPermission || '').toLowerCase();
+  if (!hasCoords || locationPermission === 'denied' || locationPermission === 'unknown') {
+    return res.status(400).json({ message: 'Location permission is required to sign in.' });
+  }
+
+  const forwardedFor = req.headers['x-forwarded-for'];
+  const ipFromForward = Array.isArray(forwardedFor) ? forwardedFor[0] : (forwardedFor || '').split(',')[0]?.trim();
+  const ip = ipFromForward || req.ip || req.socket?.remoteAddress || 'Unknown';
+
+  const session = await UserSession.create({
+    userId: user._id,
+    userName: user.name || '',
+    userEmail: user.email || '',
+    userRole: user.role || '',
+    device: sessionMeta?.device || 'Unknown Device',
+    browser: sessionMeta?.browser || 'Unknown Browser',
+    os: sessionMeta?.os || 'Unknown OS',
+    ip,
+    location: hasCoords ? 'GPS Verified' : 'Unknown',
+    coords: hasCoords ? { lat: coords.lat, lng: coords.lng } : undefined,
+    locationPermission: locationPermission || 'unknown',
+    lastActive: new Date()
+  });
+
+  const token = generateToken(user._id, String(session._id));
   res.json({
     token,
     user: {

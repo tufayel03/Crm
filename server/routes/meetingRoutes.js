@@ -1,17 +1,20 @@
 const express = require('express');
 const router = express.Router();
 const { protect, authorize } = require('../middleware/auth');
-const { getMeetings, createMeeting, updateMeeting, deleteMeeting } = require('../controllers/meetingController');
+const { requirePermission } = require('../middleware/permission');
+const { getMeetings, getMyMeetings, createMeeting, updateMeeting, deleteMeeting } = require('../controllers/meetingController');
 const asyncHandler = require('../utils/asyncHandler');
 
-router.use(protect, authorize('admin', 'manager', 'agent'));
+router.use(protect);
+router.get('/me', authorize('admin', 'manager', 'agent', 'client'), asyncHandler(getMyMeetings));
+router.use(authorize('admin', 'manager', 'agent'));
 
 router.route('/')
-  .get(asyncHandler(getMeetings))
-  .post(asyncHandler(createMeeting));
+  .get(requirePermission('meetings', 'view'), asyncHandler(getMeetings))
+  .post(requirePermission('meetings', 'manage'), asyncHandler(createMeeting));
 
 router.route('/:id')
-  .patch(asyncHandler(updateMeeting))
-  .delete(asyncHandler(deleteMeeting));
+  .patch(requirePermission('meetings', 'manage'), asyncHandler(updateMeeting))
+  .delete(requirePermission('meetings', 'manage'), asyncHandler(deleteMeeting));
 
 module.exports = router;

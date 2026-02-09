@@ -98,6 +98,7 @@ app.use('/api/v1/mailbox', require('./routes/mailboxRoutes'));
 app.use('/api/v1/track', require('./routes/trackRoutes'));
 app.use('/api/v1/backup', require('./routes/backupRoutes'));
 app.use('/api/v1/files', require('./routes/fileManagerRoutes'));
+app.use('/api/v1/sessions', require('./routes/sessionRoutes'));
 
 // Health Check
 app.get('/', (req, res) => {

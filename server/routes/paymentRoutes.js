@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect, authorize } = require('../middleware/auth');
+const { requirePermission } = require('../middleware/permission');
 const { getPayments, getMyPayments, createPayment, updatePayment, deletePayment, bulkDeletePayments, sendInvoiceEmail } = require('../controllers/paymentController');
 const asyncHandler = require('../utils/asyncHandler');
 
@@ -9,14 +10,14 @@ router.get('/me', authorize('admin', 'manager', 'agent', 'client'), asyncHandler
 router.use(authorize('admin', 'manager', 'agent'));
 
 router.route('/')
-  .get(asyncHandler(getPayments))
-  .post(asyncHandler(createPayment))
-  .delete(asyncHandler(bulkDeletePayments));
+  .get(requirePermission('payments', 'view'), asyncHandler(getPayments))
+  .post(requirePermission('payments', 'manage'), asyncHandler(createPayment))
+  .delete(requirePermission('payments', 'manage'), asyncHandler(bulkDeletePayments));
 
 router.route('/:id')
-  .patch(asyncHandler(updatePayment))
-  .delete(asyncHandler(deletePayment));
+  .patch(requirePermission('payments', 'manage'), asyncHandler(updatePayment))
+  .delete(requirePermission('payments', 'manage'), asyncHandler(deletePayment));
 
-router.post('/:id/send-invoice', asyncHandler(sendInvoiceEmail));
+router.post('/:id/send-invoice', requirePermission('payments', 'manage'), asyncHandler(sendInvoiceEmail));
 
 module.exports = router;

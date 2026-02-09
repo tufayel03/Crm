@@ -7,6 +7,7 @@ import { useServicesStore } from '../stores/servicesStore';
 import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useTeamStore } from '../stores/teamStore';
+import { usePermissions } from '../hooks/usePermissions';
 import {
     Send, Plus, Users, CheckCircle2, Clock, ChevronRight, X,
     Calendar, Mail, Loader2, Phone, Briefcase, History, Settings, Zap
@@ -29,6 +30,8 @@ const Campaigns: React.FC = () => {
     const { user } = useAuthStore();
     const { campaignLimits, updateCampaignLimits } = useSettingsStore();
     const { members } = useTeamStore();
+    const { can } = usePermissions();
+    const canManageCampaigns = can('manage', 'campaigns');
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -167,19 +170,23 @@ const Campaigns: React.FC = () => {
                     <p className="text-textSecondary">Create, schedule, and track your marketing outreach.</p>
                 </div>
                 <div className="flex gap-2">
-                    <button
-                        onClick={() => { setLimitsForm(campaignLimits); setIsSettingsOpen(true); }}
-                        className="flex items-center gap-2 px-4 py-3 bg-white border border-border text-textSecondary font-bold rounded-xl hover:bg-slate-50 transition-all"
-                        title="Configure sending limits"
-                    >
-                        <Settings size={20} />
-                    </button>
-                    <button
-                        onClick={() => setIsModalOpen(true)}
-                        className="flex items-center gap-2 px-6 py-3 bg-darkGreen text-white font-bold rounded-xl shadow-lg shadow-darkGreen/10 hover:bg-opacity-90 transition-all"
-                    >
-                        <Plus size={20} /> Create Campaign
-                    </button>
+                    {canManageCampaigns && (
+                        <button
+                            onClick={() => { setLimitsForm(campaignLimits); setIsSettingsOpen(true); }}
+                            className="flex items-center gap-2 px-4 py-3 bg-white border border-border text-textSecondary font-bold rounded-xl hover:bg-slate-50 transition-all"
+                            title="Configure sending limits"
+                        >
+                            <Settings size={20} />
+                        </button>
+                    )}
+                    {canManageCampaigns && (
+                        <button
+                            onClick={() => setIsModalOpen(true)}
+                            className="flex items-center gap-2 px-6 py-3 bg-darkGreen text-white font-bold rounded-xl shadow-lg shadow-darkGreen/10 hover:bg-opacity-90 transition-all"
+                        >
+                            <Plus size={20} /> Create Campaign
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -212,7 +219,7 @@ const Campaigns: React.FC = () => {
             </div>
 
             {/* --- SETTINGS MODAL --- */}
-            {isSettingsOpen && (
+            {canManageCampaigns && isSettingsOpen && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                     <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
                         <div className="flex justify-between items-center mb-6">
@@ -254,7 +261,7 @@ const Campaigns: React.FC = () => {
             )}
 
             {/* --- CREATE CAMPAIGN WIZARD (Modal) --- */}
-            {isModalOpen && (
+            {canManageCampaigns && isModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                     <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 max-h-[90vh]">
                         {/* Header */}

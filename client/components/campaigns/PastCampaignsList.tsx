@@ -2,12 +2,15 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCampaignStore } from '../../stores/campaignStore';
+import { usePermissions } from '../../hooks/usePermissions';
 import {
   CheckCircle2, Mail, Trash2, Copy, Eye, MousePointer2, Archive, X
 } from 'lucide-react';
 
 const PastCampaignsList: React.FC = () => {
   const { campaigns, deleteCampaign, cloneCampaign } = useCampaignStore();
+  const { can } = usePermissions();
+  const canManageCampaigns = can('manage', 'campaigns');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const pastCampaigns = campaigns.filter(c => c.status === 'Completed')
@@ -68,20 +71,24 @@ const PastCampaignsList: React.FC = () => {
               >
                 <Eye size={16} />
               </Link>
-              <button
-                onClick={() => cloneCampaign(camp.id)}
-                className="p-2 text-textSecondary hover:bg-slate-100 hover:text-primary rounded-lg transition-colors"
-                title="Re-run (Clone)"
-              >
-                <Copy size={16} />
-              </button>
-              <button
-                onClick={() => deleteCampaign(camp.id)}
-                className="p-2 text-textSecondary hover:bg-red-50 hover:text-danger rounded-lg transition-colors"
-                title="Delete History"
-              >
-                <Trash2 size={16} />
-              </button>
+              {canManageCampaigns && (
+                <button
+                  onClick={() => cloneCampaign(camp.id)}
+                  className="p-2 text-textSecondary hover:bg-slate-100 hover:text-primary rounded-lg transition-colors"
+                  title="Re-run (Clone)"
+                >
+                  <Copy size={16} />
+                </button>
+              )}
+              {canManageCampaigns && (
+                <button
+                  onClick={() => deleteCampaign(camp.id)}
+                  className="p-2 text-textSecondary hover:bg-red-50 hover:text-danger rounded-lg transition-colors"
+                  title="Delete History"
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
             </div>
           </div>
         )
