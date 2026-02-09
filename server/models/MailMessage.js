@@ -18,6 +18,7 @@ const MailMessageSchema = new mongoose.Schema({
   from: String,
   fromName: String,
   to: String,
+  cc: String,
   subject: String,
   body: String,
   timestamp: Date,

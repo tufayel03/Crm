@@ -8,6 +8,7 @@ export interface EmailMessage {
   from: string;
   fromName: string;
   to: string;
+  cc?: string;
   subject: string;
   body: string; // HTML supported
   timestamp: string;

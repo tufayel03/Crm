@@ -45,6 +45,7 @@ const normalizeRecipients = (to) => {
 exports.sendEmail = async (req, res) => {
   const {
     to,
+    cc,
     subject,
     html,
     text,
@@ -57,6 +58,7 @@ exports.sendEmail = async (req, res) => {
   if (!to || !subject) return res.status(400).json({ message: 'To and subject required' });
 
   const recipients = normalizeRecipients(to);
+  const ccRecipients = normalizeRecipients(cc);
   if (recipients.length === 0) {
     return res.status(400).json({ message: 'At least one valid recipient is required' });
   }
@@ -101,6 +103,7 @@ exports.sendEmail = async (req, res) => {
 
       const mailInfo = await sendMail({
         to: recipient,
+        ...(ccRecipients.length > 0 ? { cc: ccRecipients.join(', ') } : {}),
         subject,
         html: htmlWithTracking,
         text,
@@ -135,6 +138,7 @@ exports.sendEmail = async (req, res) => {
         from: fromAddress,
         fromName,
         to: recipient,
+        ...(ccRecipients.length > 0 ? { cc: ccRecipients.join(', ') } : {}),
         subject,
         body: finalHtml || '',
         timestamp: new Date(),
@@ -198,4 +202,22 @@ exports.sendEmail = async (req, res) => {
     sent: sentMessages,
     failures
   });
+};
+
+exports.getEmailAccounts = async (req, res) => {
+  const settings = await Settings.findOne({}).select('emailAccounts');
+  const accounts = Array.isArray(settings?.emailAccounts) ? settings.emailAccounts : [];
+
+  // Never expose SMTP credentials to the client.
+  const sanitized = accounts.map((acc) => ({
+    id: acc.id || String(acc._id || ''),
+    _id: acc._id,
+    email: acc.email || '',
+    username: acc.username || acc.email || '',
+    useForCampaigns: Boolean(acc.useForCampaigns),
+    useForClients: Boolean(acc.useForClients),
+    isVerified: Boolean(acc.isVerified)
+  }));
+
+  res.json({ emailAccounts: sanitized });
 };

@@ -10,6 +10,14 @@ const safeString = (value) => {
   }
 };
 
+const shouldSkipHttpErrorLog = (statusCode, message) => {
+  if (statusCode === 403 && typeof message === 'string') {
+    const normalized = message.toLowerCase();
+    if (normalized.includes('forbidden by access control')) return true;
+  }
+  return false;
+};
+
 const errorLogger = (req, res, next) => {
   const originalJson = res.json.bind(res);
   const originalSend = res.send.bind(res);
@@ -34,6 +42,7 @@ const errorLogger = (req, res, next) => {
 
   res.on('finish', () => {
     if (res.statusCode < 400) return;
+    if (shouldSkipHttpErrorLog(res.statusCode, res.locals.errorMessage)) return;
 
     const userId = req.user?._id || req.user?.id;
     const userName = req.user?.email || req.user?.name || 'anonymous';

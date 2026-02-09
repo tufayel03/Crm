@@ -23,6 +23,8 @@ const Mailbox: React.FC = () => {
     const { clients, addClientNote } = useClientsStore();
     const { emailAccounts, generalSettings } = useSettingsStore();
     const { templates } = useCampaignStore();
+    const [sharedEmailAccounts, setSharedEmailAccounts] = useState<any[]>([]);
+    const availableEmailAccounts = emailAccounts.length > 0 ? emailAccounts : sharedEmailAccounts;
 
     const [search, setSearch] = useState('');
     const [selectedFolder, setSelectedFolder] = useState<'General' | 'Sent' | 'Trash' | 'Clients' | string>('General');
@@ -52,6 +54,8 @@ const Mailbox: React.FC = () => {
     const [isComposeOpen, setIsComposeOpen] = useState(false);
     const [composeAccountId, setComposeAccountId] = useState('');
     const [composeTo, setComposeTo] = useState('');
+    const [composeCcRecipients, setComposeCcRecipients] = useState<string[]>([]);
+    const [composeCcInput, setComposeCcInput] = useState('');
     const [composeSubject, setComposeSubject] = useState('');
     const [composeMode, setComposeMode] = useState<'html' | 'text'>('html');
     const [composeBody, setComposeBody] = useState('');
@@ -157,6 +161,34 @@ const Mailbox: React.FC = () => {
             reader.onerror = () => reject(reader.error || new Error('Failed to read file'));
             reader.readAsDataURL(file);
         });
+
+    const normalizeEmailToken = (value: string) =>
+        String(value || '').trim().replace(/[;,]+$/g, '');
+
+    const addCcTokens = (raw: string) => {
+        const parts = String(raw || '')
+            .split(/[,\n;]+/g)
+            .map(normalizeEmailToken)
+            .filter(Boolean);
+        if (parts.length === 0) return;
+
+        setComposeCcRecipients((prev) => {
+            const seen = new Set(prev.map((x) => x.toLowerCase()));
+            const next = [...prev];
+            parts.forEach((email) => {
+                const key = email.toLowerCase();
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    next.push(email);
+                }
+            });
+            return next;
+        });
+    };
+
+    const removeCcRecipient = (email: string) => {
+        setComposeCcRecipients((prev) => prev.filter((x) => x.toLowerCase() !== email.toLowerCase()));
+    };
     const sanitizeEmailHtml = (value: string) => {
         const raw = String(value || '');
         const hasHtmlTag = /<\w+[\s\S]*?>/i.test(raw);
@@ -185,9 +217,26 @@ const Mailbox: React.FC = () => {
     useEffect(() => {
         if (!isComposeOpen) return;
         if (composeAccountId) return;
-        if (emailAccounts.length === 0) return;
-        setComposeAccountId(getAccountKey(emailAccounts[0]));
-    }, [isComposeOpen, composeAccountId, emailAccounts]);
+        if (availableEmailAccounts.length === 0) return;
+        setComposeAccountId(getAccountKey(availableEmailAccounts[0]));
+    }, [isComposeOpen, composeAccountId, availableEmailAccounts]);
+
+    useEffect(() => {
+        let active = true;
+
+        const loadSharedAccounts = async () => {
+            try {
+                const data = await apiRequest<any>('/api/v1/email/accounts');
+                if (!active) return;
+                setSharedEmailAccounts(Array.isArray(data?.emailAccounts) ? data.emailAccounts : []);
+            } catch {
+                if (active) setSharedEmailAccounts([]);
+            }
+        };
+
+        loadSharedAccounts();
+        return () => { active = false; };
+    }, []);
 
     // REAL-TIME SOCKET SETUP (Gmail-like architecture)
     useEffect(() => {
@@ -230,8 +279,8 @@ const Mailbox: React.FC = () => {
 
     // --- Account Switching Logic ---
     const currentAccount = useMemo(() =>
-        emailAccounts.find(acc => getAccountKey(acc) === selectedAccountId),
-        [emailAccounts, selectedAccountId]);
+        availableEmailAccounts.find(acc => getAccountKey(acc) === selectedAccountId),
+        [availableEmailAccounts, selectedAccountId]);
 
     // --- Filtering Logic ---
     const filteredEmails = useMemo(() => {
@@ -499,10 +548,12 @@ const Mailbox: React.FC = () => {
         const defaultAccountId =
             selectedAccountId !== 'all'
                 ? selectedAccountId
-                : getAccountKey(emailAccounts[0]);
+                : getAccountKey(availableEmailAccounts[0]);
 
         setComposeAccountId(defaultAccountId);
         setComposeTo('');
+        setComposeCcRecipients([]);
+        setComposeCcInput('');
         setComposeSubject('');
         setComposeMode('html');
         setComposeBody('');
@@ -553,6 +604,21 @@ const Mailbox: React.FC = () => {
 
     const handleSendCompose = async () => {
         const to = composeTo.trim();
+        const pendingCc = normalizeEmailToken(composeCcInput);
+        if (pendingCc) addCcTokens(pendingCc);
+        const ccValues = [...composeCcRecipients, ...(pendingCc ? [pendingCc] : [])]
+            .map((x) => x.trim())
+            .filter(Boolean);
+        const ccUnique: string[] = [];
+        const ccSeen = new Set<string>();
+        ccValues.forEach((email) => {
+            const key = email.toLowerCase();
+            if (!ccSeen.has(key)) {
+                ccSeen.add(key);
+                ccUnique.push(email);
+            }
+        });
+        const cc = ccUnique.join(', ');
         const subject = composeSubject.trim();
         const body = composeBody.trim();
         if (!to) {
@@ -567,7 +633,7 @@ const Mailbox: React.FC = () => {
             setComposeError('Write a message or attach a file.');
             return;
         }
-        if (emailAccounts.length > 0 && !composeAccountId) {
+        if (availableEmailAccounts.length > 0 && !composeAccountId) {
             setComposeError('Select sender account.');
             return;
         }
@@ -591,6 +657,7 @@ const Mailbox: React.FC = () => {
                 method: 'POST',
                 body: JSON.stringify({
                     to: composeTo,
+                    ...(cc ? { cc } : {}),
                     subject: composeSubject,
                     html: htmlBody,
                     text: textBody,
@@ -640,7 +707,7 @@ const Mailbox: React.FC = () => {
         const html = applyTemplateTokens(replyContent, tokenData).replace(/\n/g, '<br/>');
         const accountId = selectedAccountId !== 'all'
             ? selectedAccountId
-            : String((selectedEmail as any).accountId || (selectedEmail as any).accountEmail || getAccountKey(emailAccounts[0]) || '');
+            : String((selectedEmail as any).accountId || (selectedEmail as any).accountEmail || getAccountKey(availableEmailAccounts[0]) || '');
         const subject = applyTemplateTokens(`Re: ${selectedEmail.subject}`, tokenData);
         const inReplyTo = normalizeMessageId(selectedEmail.messageId);
         const references = buildReplyReferences(selectedEmail);
@@ -749,7 +816,7 @@ const Mailbox: React.FC = () => {
                                     <div className="w-8 h-8 rounded-full bg-slate-500 flex items-center justify-center text-white font-bold">A</div>
                                     <span className="font-medium">All Inboxes</span>
                                 </button>
-                                {emailAccounts.map(acc => {
+                                {availableEmailAccounts.map(acc => {
                                     const accountKey = getAccountKey(acc);
                                     return (
                                     <button
@@ -1304,7 +1371,9 @@ const Mailbox: React.FC = () => {
                                                 <h4 className="font-bold text-textPrimary mr-2">{msg.fromName} <span className="text-xs font-normal text-textMuted">&lt;{msg.from}&gt;</span></h4>
                                                 <span className="text-xs text-textMuted whitespace-nowrap">{new Date(msg.timestamp).toLocaleString()}</span>
                                             </div>
-                                            <p className="text-xs text-textSecondary truncate">to {msg.to || 'me'}</p>
+                                            <p className="text-xs text-textSecondary truncate">
+                                                to {msg.to || 'me'}{(msg as any).cc ? ` | cc ${(msg as any).cc}` : ''}
+                                            </p>
                                         </div>
                                     </div>
 
@@ -1427,7 +1496,7 @@ const Mailbox: React.FC = () => {
             {/* Compose Modal */}
             {isComposeOpen && (
                 <div className="fixed inset-0 z-[9998] bg-black/40 flex items-center justify-center p-4">
-                    <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
+                    <div className="w-full max-w-3xl max-h-[92vh] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col">
                         <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
                             <h3 className="text-lg font-bold text-textPrimary">New Message</h3>
                             <button
@@ -1440,7 +1509,7 @@ const Mailbox: React.FC = () => {
                             </button>
                         </div>
 
-                        <div className="p-5 space-y-3">
+                        <div className="p-5 space-y-3 overflow-y-auto no-scrollbar">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <div>
                                     <label className="block text-xs font-bold text-textSecondary uppercase mb-1">From Account</label>
@@ -1449,10 +1518,10 @@ const Mailbox: React.FC = () => {
                                         onChange={(e) => setComposeAccountId(e.target.value)}
                                         className="w-full px-3 py-2 bg-appBg border border-border rounded-lg outline-none focus:ring-2 focus:ring-primary"
                                     >
-                                        {emailAccounts.length === 0 ? (
+                                        {availableEmailAccounts.length === 0 ? (
                                             <option value="">No account configured</option>
                                         ) : (
-                                            emailAccounts.map((acc) => (
+                                            availableEmailAccounts.map((acc) => (
                                                 <option key={getAccountKey(acc) || acc.email} value={getAccountKey(acc)}>
                                                     {acc.username || acc.email} ({acc.email})
                                                 </option>
@@ -1482,6 +1551,61 @@ const Mailbox: React.FC = () => {
                                     placeholder="recipient@example.com or a,b,c@example.com"
                                     className="w-full px-3 py-2 bg-appBg border border-border rounded-lg outline-none focus:ring-2 focus:ring-primary"
                                 />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-textSecondary uppercase mb-1">Cc (Optional)</label>
+                                <div className="w-full px-2 py-2 bg-appBg border border-border rounded-lg min-h-[56px] max-h-[160px] overflow-y-auto focus-within:ring-2 focus-within:ring-primary flex flex-wrap gap-1.5 items-start">
+                                    {composeCcRecipients.map((email) => (
+                                        <span
+                                            key={email}
+                                            className="inline-flex items-center gap-1.5 bg-white border border-slate-300 rounded-full px-2.5 py-1 text-xs text-textPrimary"
+                                        >
+                                            <span className="w-5 h-5 rounded-full bg-orange-600 text-white text-[10px] font-bold flex items-center justify-center">
+                                                {email.charAt(0).toLowerCase()}
+                                            </span>
+                                            <span>{email}</span>
+                                            <button
+                                                type="button"
+                                                className="text-textMuted hover:text-danger"
+                                                onClick={() => removeCcRecipient(email)}
+                                                title="Remove"
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        </span>
+                                    ))}
+                                    <input
+                                        type="text"
+                                        value={composeCcInput}
+                                        onChange={(e) => setComposeCcInput(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' || e.key === 'Tab' || e.key === ',' || e.key === ';') {
+                                                e.preventDefault();
+                                                const token = normalizeEmailToken(composeCcInput);
+                                                if (token) {
+                                                    addCcTokens(token);
+                                                    setComposeCcInput('');
+                                                }
+                                            }
+                                        }}
+                                        onBlur={() => {
+                                            const token = normalizeEmailToken(composeCcInput);
+                                            if (token) {
+                                                addCcTokens(token);
+                                                setComposeCcInput('');
+                                            }
+                                        }}
+                                        onPaste={(e) => {
+                                            const text = e.clipboardData.getData('text');
+                                            if (/[,\n;]/.test(text)) {
+                                                e.preventDefault();
+                                                addCcTokens(text);
+                                            }
+                                        }}
+                                        placeholder={composeCcRecipients.length ? 'Add another email...' : 'copy@example.com'}
+                                        className="flex-1 min-w-[180px] px-2 py-1 bg-transparent outline-none text-xs"
+                                    />
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1564,7 +1688,7 @@ const Mailbox: React.FC = () => {
                             )}
                         </div>
 
-                        <div className="px-5 py-4 border-t border-gray-200 flex justify-end gap-2 bg-white">
+                        <div className="px-5 py-4 border-t border-gray-200 flex justify-end gap-2 bg-white shrink-0">
                             <button
                                 onClick={closeCompose}
                                 disabled={isSendingCompose}
