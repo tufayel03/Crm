@@ -11,6 +11,7 @@ const UserSchema = new mongoose.Schema({
   jobTitle: String,
   avatar: String,
   lastActive: Date,
+  permissionOverrides: { type: mongoose.Schema.Types.Mixed, default: {} },
   resetPasswordToken: String,
   resetPasswordExpires: Date
 }, { timestamps: true });

@@ -32,9 +32,11 @@ const mergePermissions = (settingsPermissions) => ({
   agent: { ...DEFAULT_PERMISSIONS.agent, ...((settingsPermissions || {}).agent || {}) }
 });
 
-const hasPermission = (role, resource, action, permissions) => {
+const hasPermission = (role, resource, action, permissions, userOverrides) => {
   if (role === 'admin') return true;
   if (role !== 'manager' && role !== 'agent') return false;
+  const overrideValue = userOverrides?.[resource]?.[action];
+  if (typeof overrideValue === 'boolean') return overrideValue;
   return Boolean(permissions?.[role]?.[resource]?.[action]);
 };
 
@@ -54,7 +56,7 @@ const requirePermission = (resource, action = 'view') => async (req, res, next) 
   const settings = await Settings.findOne({}).select('permissions');
   const permissions = mergePermissions(settings?.permissions);
 
-  if (!hasPermission(req.user.role, resource, action, permissions)) {
+  if (!hasPermission(req.user.role, resource, action, permissions, req.user.permissionOverrides || {})) {
     return res.status(403).json({ message: 'Forbidden by access control' });
   }
 

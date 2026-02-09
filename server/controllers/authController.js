@@ -98,6 +98,7 @@ exports.login = async (req, res) => {
       name: user.name,
       email: user.email,
       role: user.role,
+      permissionOverrides: user.permissionOverrides || {},
       avatar: user.avatar,
       status: user.status,
       phone: user.phone,

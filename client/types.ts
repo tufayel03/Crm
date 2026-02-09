@@ -6,6 +6,7 @@ export interface User {
   name: string;
   email: string;
   role: Role;
+  permissionOverrides?: Partial<Record<PermissionResource, Partial<RolePermissions>>>;
   avatar?: string;
   status: 'active' | 'blocked' | 'pending';
   phone?: string;

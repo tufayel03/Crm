@@ -6,7 +6,7 @@ import { PermissionResource, Role } from '../types';
 type Action = 'view' | 'manage' | 'export';
 
 export const usePermissions = () => {
-  const { role } = useAuthStore();
+  const { role, user } = useAuthStore();
   const { permissions } = useSettingsStore();
 
   const can = (action: Action, resource: PermissionResource): boolean => {
@@ -22,6 +22,9 @@ export const usePermissions = () => {
     }
 
     if (!role || (role !== 'manager' && role !== 'agent')) return false;
+
+    const perUserValue = user?.permissionOverrides?.[resource]?.[action];
+    if (typeof perUserValue === 'boolean') return perUserValue;
 
     return permissions[role][resource][action];
   };

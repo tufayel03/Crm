@@ -1,4 +1,23 @@
-﻿const User = require('../models/User');
+const User = require('../models/User');
+
+const RESOURCES = ['dashboard', 'leads', 'clients', 'tasks', 'meetings', 'mailbox', 'campaigns', 'payments', 'team', 'settings'];
+const ACTIONS = ['view', 'manage', 'export'];
+
+const sanitizePermissionOverrides = (value) => {
+  const input = value && typeof value === 'object' ? value : {};
+  const clean = {};
+  for (const resource of RESOURCES) {
+    if (!input[resource] || typeof input[resource] !== 'object') continue;
+    for (const action of ACTIONS) {
+      const flag = input[resource][action];
+      if (typeof flag === 'boolean') {
+        if (!clean[resource]) clean[resource] = {};
+        clean[resource][action] = flag;
+      }
+    }
+  }
+  return clean;
+};
 
 exports.getUsers = async (req, res) => {
   const users = await User.find({}).sort({ createdAt: -1 });
@@ -29,6 +48,14 @@ exports.createUser = async (req, res) => {
 exports.updateUser = async (req, res) => {
   const updates = { ...req.body };
   delete updates.password;
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'permissionOverrides')) {
+    updates.permissionOverrides = sanitizePermissionOverrides(updates.permissionOverrides);
+  }
+  if (updates.role && updates.role !== 'manager' && updates.role !== 'agent') {
+    updates.permissionOverrides = {};
+  }
+
   const user = await User.findByIdAndUpdate(req.params.id, updates, { new: true });
   if (!user) return res.status(404).json({ message: 'User not found' });
   res.json(user);
@@ -49,4 +76,3 @@ exports.deleteUser = async (req, res) => {
   if (!user) return res.status(404).json({ message: 'User not found' });
   res.json({ message: 'User removed' });
 };
-
