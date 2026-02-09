@@ -273,6 +273,13 @@ const Mailbox: React.FC = () => {
         };
     }, [selectedAccountId, fetchEmails]);
 
+    // Derived Labels (from Settings + existing emails)
+    const availableLabels = useMemo(() => {
+        const settingLabels = generalSettings?.availableLabels || [];
+        const emailLabels = new Set(emails.flatMap(e => e.labels || []));
+        return Array.from(new Set([...settingLabels, ...Array.from(emailLabels)])).sort();
+    }, [emails, generalSettings]);
+
     useEffect(() => {
         const params = new URLSearchParams(location.search || '');
         const targetMessageId = normalizeMessageId(params.get('messageId'));
@@ -311,13 +318,6 @@ const Mailbox: React.FC = () => {
 
         navigate('/mailbox', { replace: true });
     }, [location.search, emails, statuses, availableLabels, navigate, markAsRead]);
-
-    // Derived Labels (from Settings + existing emails)
-    const availableLabels = useMemo(() => {
-        const settingLabels = generalSettings?.availableLabels || [];
-        const emailLabels = new Set(emails.flatMap(e => e.labels || []));
-        return Array.from(new Set([...settingLabels, ...Array.from(emailLabels)])).sort();
-    }, [emails, generalSettings]);
 
     // --- Account Switching Logic ---
     const currentAccount = useMemo(() =>
