@@ -52,6 +52,7 @@ const Mailbox: React.FC = () => {
     const [deleteProgress, setDeleteProgress] = useState(0);
     const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
     const accountMenuRef = useRef<HTMLDivElement>(null);
+    const composeEditorRef = useRef<HTMLDivElement>(null);
 
     // Compose State
     const [isComposeOpen, setIsComposeOpen] = useState(false);
@@ -60,7 +61,6 @@ const Mailbox: React.FC = () => {
     const [composeCcRecipients, setComposeCcRecipients] = useState<string[]>([]);
     const [composeCcInput, setComposeCcInput] = useState('');
     const [composeSubject, setComposeSubject] = useState('');
-    const [composeMode, setComposeMode] = useState<'html' | 'text'>('html');
     const [composeBody, setComposeBody] = useState('');
     const [composeTemplateId, setComposeTemplateId] = useState('');
     const [composeAttachments, setComposeAttachments] = useState<File[]>([]);
@@ -597,7 +597,6 @@ const Mailbox: React.FC = () => {
         setComposeCcRecipients([]);
         setComposeCcInput('');
         setComposeSubject('');
-        setComposeMode('html');
         setComposeBody('');
         setComposeTemplateId('');
         setComposeAttachments([]);
@@ -630,7 +629,7 @@ const Mailbox: React.FC = () => {
 
         setComposeSubject(applyTemplateTokens(template.subject, tokenData));
         const processedHtml = applyTemplateTokens(template.htmlContent || '', tokenData);
-        setComposeBody(composeMode === 'text' ? htmlToPlainText(processedHtml) : processedHtml);
+        setComposeBody(processedHtml);
     };
 
     const handleComposeFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -662,7 +661,7 @@ const Mailbox: React.FC = () => {
         });
         const cc = ccUnique.join(', ');
         const subject = composeSubject.trim();
-        const body = composeBody.trim();
+        const body = htmlToPlainText(composeBody).trim();
         if (!to) {
             setComposeError('Recipient email is required.');
             return;
@@ -691,8 +690,8 @@ const Mailbox: React.FC = () => {
                 }))
             );
 
-            const htmlBody = composeMode === 'html' ? composeBody : composeBody.replace(/\n/g, '<br/>');
-            const textBody = composeMode === 'text' ? composeBody : htmlToPlainText(composeBody);
+            const htmlBody = sanitizeEmailHtml(composeBody);
+            const textBody = htmlToPlainText(composeBody);
             const clientRequestId = `compose-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
             const response: any = await apiRequest('/api/v1/email/send', {
@@ -730,6 +729,16 @@ const Mailbox: React.FC = () => {
             setIsSendingCompose(false);
         }
     };
+
+    useEffect(() => {
+        if (!isComposeOpen) return;
+        const editor = composeEditorRef.current;
+        if (!editor) return;
+        const sanitized = sanitizeEmailHtml(composeBody);
+        if (editor.innerHTML !== sanitized) {
+            editor.innerHTML = sanitized;
+        }
+    }, [isComposeOpen, composeBody]);
 
     const handleSendReply = () => {
         if (!selectedEmail || !replyContent) return;
@@ -1366,6 +1375,18 @@ const Mailbox: React.FC = () => {
                         <div className="h-16 border-b border-border flex items-center justify-between px-6 bg-white shrink-0">
                             <div className="flex items-center gap-3 text-textSecondary">
                                 <button
+                                    onClick={() => {
+                                        setSelectedEmailId(null);
+                                        setIsReplying(false);
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-slate-100 text-sm font-medium"
+                                    title="Back to list"
+                                >
+                                    <ArrowLeft size={16} />
+                                    Back
+                                </button>
+                                <div className="w-px h-6 bg-border"></div>
+                                <button
                                     onClick={() => selectedFolder === 'Trash' ? deleteForever(selectedEmail.id) : deleteEmail(selectedEmail.id)}
                                     className="p-2 hover:bg-slate-100 rounded-full"
                                     title="Delete"
@@ -1552,7 +1573,7 @@ const Mailbox: React.FC = () => {
                         </div>
 
                         <div className="p-5 space-y-3 overflow-y-auto no-scrollbar">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
                                 <div>
                                     <label className="block text-xs font-bold text-textSecondary uppercase mb-1">From Account</label>
                                     <select
@@ -1569,17 +1590,6 @@ const Mailbox: React.FC = () => {
                                                 </option>
                                             ))
                                         )}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-textSecondary uppercase mb-1">Content Type</label>
-                                    <select
-                                        value={composeMode}
-                                        onChange={(e) => setComposeMode(e.target.value as 'html' | 'text')}
-                                        className="w-full px-3 py-2 bg-appBg border border-border rounded-lg outline-none focus:ring-2 focus:ring-primary"
-                                    >
-                                        <option value="html">HTML Email</option>
-                                        <option value="text">Plain Text Email</option>
                                     </select>
                                 </div>
                             </div>
@@ -1679,15 +1689,21 @@ const Mailbox: React.FC = () => {
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold text-textSecondary uppercase mb-1">
-                                    {composeMode === 'html' ? 'HTML Body' : 'Text Body'}
-                                </label>
-                                <textarea
-                                    value={composeBody}
-                                    onChange={(e) => setComposeBody(e.target.value)}
-                                    placeholder={composeMode === 'html' ? '<h1>Hello</h1><p>Your message...</p>' : 'Write plain text message...'}
-                                    className="w-full px-3 py-2 bg-appBg border border-border rounded-lg outline-none focus:ring-2 focus:ring-primary min-h-[220px] font-mono text-sm"
-                                />
+                                <label className="block text-xs font-bold text-textSecondary uppercase mb-1">HTML Body</label>
+                                <div className="relative">
+                                    {!htmlToPlainText(composeBody).trim() && (
+                                        <div className="absolute left-3 top-2 text-sm text-textMuted pointer-events-none">
+                                            Paste rich text here (Google Docs formatting is preserved)
+                                        </div>
+                                    )}
+                                    <div
+                                        ref={composeEditorRef}
+                                        contentEditable
+                                        suppressContentEditableWarning
+                                        onInput={(e) => setComposeBody(sanitizeEmailHtml((e.currentTarget as HTMLDivElement).innerHTML))}
+                                        className="w-full px-3 py-2 bg-appBg border border-border rounded-lg outline-none focus:ring-2 focus:ring-primary min-h-[220px] text-sm overflow-y-auto"
+                                    />
+                                </div>
                             </div>
 
                             <div className="border border-border rounded-lg p-3 bg-slate-50">

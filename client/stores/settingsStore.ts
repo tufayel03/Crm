@@ -65,6 +65,36 @@ interface SettingsState {
   updatePermission: (role: 'manager' | 'agent', resource: PermissionResource, updates: Partial<RolePermissions>) => Promise<void>;
 }
 
+const patchSingleEmailAccount = (
+  emailAccounts: EmailAccount[],
+  id: string,
+  updates: Partial<EmailAccount>
+) => {
+  let updated = false;
+
+  return emailAccounts.map(acc => {
+    if (updated || acc.id !== id) return acc;
+    updated = true;
+    return { ...acc, ...updates };
+  });
+};
+
+const normalizeEmailAccounts = (emailAccounts: EmailAccount[]) => {
+  const seen = new Set<string>();
+
+  return emailAccounts.map((acc, index) => {
+    const rawId = typeof acc.id === 'string' ? acc.id.trim() : '';
+    let nextId = rawId || `email-${Date.now().toString(36)}-${index.toString(36)}`;
+
+    while (seen.has(nextId)) {
+      nextId = `email-${Date.now().toString(36)}-${index.toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    }
+
+    seen.add(nextId);
+    return nextId === acc.id ? acc : { ...acc, id: nextId };
+  });
+};
+
 const DEFAULT_STATE = {
   emailAccounts: [],
   permissions: DEFAULT_PERMISSIONS,
@@ -100,12 +130,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   fetchSettings: async () => {
     const data = await apiRequest<any>('/api/v1/settings');
+    const emailAccounts = normalizeEmailAccounts(data.emailAccounts || []);
     const mergedPermissions: AccessControlConfig = {
       manager: { ...DEFAULT_PERMISSIONS.manager, ...(data.permissions?.manager || {}) },
       agent: { ...DEFAULT_PERMISSIONS.agent, ...(data.permissions?.agent || {}) }
     };
     set({
-      emailAccounts: data.emailAccounts || [],
+      emailAccounts,
       generalSettings: data.generalSettings || DEFAULT_STATE.generalSettings,
       systemTemplates: data.systemTemplates || DEFAULT_STATE.systemTemplates,
       ipRules: data.ipRules || DEFAULT_STATE.ipRules,
@@ -130,27 +161,38 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       isVerified: accountData.isVerified || false,
       sentCount: 0
     };
+    const emailAccounts = normalizeEmailAccounts([...get().emailAccounts, newAccount]);
     const updated = {
-      emailAccounts: [...get().emailAccounts, newAccount]
+      emailAccounts
     };
     await apiRequest('/api/v1/settings', { method: 'PATCH', body: JSON.stringify(updated) });
-    set(state => ({ emailAccounts: [...state.emailAccounts, newAccount] }));
+    set({ emailAccounts });
   },
 
   removeEmailAccount: async (id) => {
-    const emailAccounts = get().emailAccounts.filter(acc => acc.id !== id);
+    const normalized = normalizeEmailAccounts(get().emailAccounts);
+    let removed = false;
+    const emailAccounts = normalized.filter(acc => {
+      if (!removed && acc.id === id) {
+        removed = true;
+        return false;
+      }
+      return true;
+    });
     await apiRequest('/api/v1/settings', { method: 'PATCH', body: JSON.stringify({ emailAccounts }) });
     set({ emailAccounts });
   },
 
   updateRouting: async (id, updates) => {
-    const emailAccounts = get().emailAccounts.map(acc => acc.id === id ? { ...acc, ...updates } : acc);
+    const normalized = normalizeEmailAccounts(get().emailAccounts);
+    const emailAccounts = patchSingleEmailAccount(normalized, id, updates);
     await apiRequest('/api/v1/settings', { method: 'PATCH', body: JSON.stringify({ emailAccounts }) });
     set({ emailAccounts });
   },
 
   verifyAccount: async (id) => {
-    const emailAccounts = get().emailAccounts.map(acc => acc.id === id ? { ...acc, isVerified: true } : acc);
+    const normalized = normalizeEmailAccounts(get().emailAccounts);
+    const emailAccounts = patchSingleEmailAccount(normalized, id, { isVerified: true });
     await apiRequest('/api/v1/settings', { method: 'PATCH', body: JSON.stringify({ emailAccounts }) });
     set({ emailAccounts });
     return true;
