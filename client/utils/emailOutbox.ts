@@ -2,6 +2,7 @@ import { apiRequest } from './api';
 import { useNotificationStore } from '../stores/notificationStore';
 
 type OutboxStatus = 'queued' | 'sending';
+type EmailPurpose = 'clients' | 'leads' | 'campaigns';
 
 interface OutboxJob {
   id: string;
@@ -9,6 +10,7 @@ interface OutboxJob {
   subject: string;
   html: string;
   accountId?: string;
+  purpose?: EmailPurpose;
   status: OutboxStatus;
   attempts: number;
   createdAt: string;
@@ -21,6 +23,7 @@ interface QueueEmailInput {
   subject: string;
   html: string;
   accountId?: string;
+  purpose?: EmailPurpose;
 }
 
 const OUTBOX_STORAGE_KEY = 'matlance_email_outbox_v1';
@@ -73,7 +76,7 @@ const findNextJob = (jobs: OutboxJob[]) =>
     return job.status === 'queued' || isStuckSending(job);
   });
 
-export const queueEmailInBackground = ({ to, subject, html, accountId }: QueueEmailInput) => {
+export const queueEmailInBackground = ({ to, subject, html, accountId, purpose }: QueueEmailInput) => {
   const recipient = String(to || '').trim();
   if (!recipient) {
     throw new Error('Recipient email is required');
@@ -85,6 +88,7 @@ export const queueEmailInBackground = ({ to, subject, html, accountId }: QueueEm
     subject,
     html,
     accountId,
+    purpose,
     status: 'queued',
     attempts: 0,
     createdAt: nowIso()
@@ -131,6 +135,7 @@ export const processEmailOutbox = async () => {
             subject: job.subject,
             html: job.html,
             ...(job.accountId ? { accountId: job.accountId } : {}),
+            ...(job.purpose ? { purpose: job.purpose } : {}),
             clientRequestId: job.id
           })
         });

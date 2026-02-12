@@ -215,7 +215,8 @@ const LeadDetail: React.FC = () => {
       queueEmailInBackground({
         to: lead.email,
         subject: finalSubject,
-        html: finalBody
+        html: finalBody,
+        purpose: 'leads'
       });
       addNote(lead.id, `Email queued: ${finalSubject}`, user?.name || 'System');
       setIsEmailModalOpen(false);

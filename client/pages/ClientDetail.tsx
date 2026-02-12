@@ -345,7 +345,8 @@ const ClientDetail: React.FC = () => {
       queueEmailInBackground({
         to: client.email,
         subject: finalSubject,
-        html: finalBody
+        html: finalBody,
+        purpose: 'clients'
       });
       addClientNote(client.id, `Email queued: ${finalSubject}`, user?.name || 'System');
       setIsEmailModalOpen(false);

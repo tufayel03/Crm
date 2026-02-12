@@ -218,6 +218,7 @@ export interface EmailAccount {
   isVerified: boolean;
   useForCampaigns: boolean;
   useForClients: boolean;
+  useForLeads: boolean;
   sentCount: number;
 }
 

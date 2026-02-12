@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { EmailAccount } from '../../types';
-import { Trash2, AlertCircle, CheckCircle2, RefreshCw, Send, Mail, Briefcase } from 'lucide-react';
+import { Trash2, AlertCircle, CheckCircle2, RefreshCw, Send, Mail, Briefcase, Users } from 'lucide-react';
 
 interface EmailAccountCardProps {
   account: EmailAccount;
@@ -83,6 +83,24 @@ const EmailAccountCard: React.FC<EmailAccountCardProps> = ({ account, onVerify, 
                     type="checkbox" 
                     checked={account.useForClients}
                     onChange={(e) => onUpdate(account.id, { useForClients: e.target.checked })}
+                    className="w-4 h-4 text-primary focus:ring-primary rounded"
+                />
+            </label>
+
+            <label className="flex items-center justify-between p-2 border border-border rounded-lg cursor-pointer hover:bg-slate-50 transition-all">
+                <div className="flex items-center gap-2">
+                    <div className={`p-1.5 rounded-md ${account.useForLeads ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-textMuted'}`}>
+                        <Users size={16} />
+                    </div>
+                    <div>
+                        <p className="text-xs font-bold text-textPrimary">Leads</p>
+                        <p className="text-[10px] text-textMuted">Lead follow-up emails</p>
+                    </div>
+                </div>
+                <input
+                    type="checkbox"
+                    checked={account.useForLeads}
+                    onChange={(e) => onUpdate(account.id, { useForLeads: e.target.checked })}
                     className="w-4 h-4 text-primary focus:ring-primary rounded"
                 />
             </label>

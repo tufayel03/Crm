@@ -28,7 +28,8 @@ const SmtpModal: React.FC<SmtpModalProps> = ({ onClose, onSave }) => {
     imapSecure: true,
     imapStartTLS: false,
     useForCampaigns: true,
-    useForClients: true
+    useForClients: true,
+    useForLeads: true
   });
 
   // Auto-fill defaults based on provider
@@ -319,6 +320,18 @@ const SmtpModal: React.FC<SmtpModalProps> = ({ onClose, onSave }) => {
                     <div>
                         <p className="text-sm font-bold text-textPrimary">Use for Clients</p>
                         <p className="text-xs text-textSecondary">Send individual emails, invoices, and alerts.</p>
+                    </div>
+                </label>
+                <label className="flex items-center gap-3 p-3 border border-border rounded-lg cursor-pointer hover:bg-slate-50 transition-colors bg-white">
+                    <input
+                        type="checkbox"
+                        checked={formData.useForLeads}
+                        onChange={(e) => setFormData({...formData, useForLeads: e.target.checked})}
+                        className="w-4 h-4 text-primary focus:ring-primary rounded"
+                    />
+                    <div>
+                        <p className="text-sm font-bold text-textPrimary">Use for Leads</p>
+                        <p className="text-xs text-textSecondary">Send lead outreach and follow-up emails from this address.</p>
                     </div>
                 </label>
              </div>

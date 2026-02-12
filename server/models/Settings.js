@@ -15,6 +15,7 @@ const EmailAccountSchema = new mongoose.Schema({
   isVerified: { type: Boolean, default: false },
   useForCampaigns: { type: Boolean, default: false },
   useForClients: { type: Boolean, default: false },
+  useForLeads: { type: Boolean, default: false },
   sentCount: { type: Number, default: 0 }
 });
 

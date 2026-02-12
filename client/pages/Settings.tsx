@@ -97,9 +97,9 @@ const Settings: React.FC = () => {
                     <h3 className="text-lg font-bold text-textPrimary flex items-center gap-2">
                       <Server size={20} className="text-primary" /> Connected Email Accounts
                     </h3>
-                    <p className="text-sm text-textSecondary mt-1">
-                      Connect Namecheap or other business emails. Define which accounts handle campaigns vs client communication.
-                    </p>
+                         <p className="text-sm text-textSecondary mt-1">
+                            Connect Namecheap or other business emails. Define which accounts handle campaigns, leads, and client communication.
+                         </p>
                   </div>
                   <button
                     onClick={() => setIsSmtpModalOpen(true)}
@@ -140,10 +140,10 @@ const Settings: React.FC = () => {
                 <Globe size={24} className="text-blue-600 shrink-0" />
                 <div>
                   <h4 className="font-bold text-blue-800 text-sm">Routing Logic</h4>
-                  <p className="text-xs text-blue-600 mt-1">
-                    If multiple accounts are selected for <b>Campaigns</b>, the system will distribute the load to optimize delivery rates.
-                    For <b>Client</b> emails, the system defaults to the first available verified account unless a specific agent has a dedicated assignment.
-                  </p>
+                        <p className="text-xs text-blue-600 mt-1">
+                            If multiple accounts are selected for <b>Campaigns</b>, the system will distribute the load to optimize delivery rates. 
+                            For <b>Lead</b> and <b>Client</b> emails, the system defaults to the first matching verified account unless a specific sender account is chosen.
+                        </p>
                 </div>
               </div>
             </div>

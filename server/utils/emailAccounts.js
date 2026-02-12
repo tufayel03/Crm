@@ -16,18 +16,22 @@ const getEmailAccount = async ({ accountId, purpose } = {}) => {
 
   if (accountId) {
     const normalized = String(accountId);
-    return (
-      accounts.find((a) =>
+    const matchedById = accounts.find((a) =>
         [a.id, a._id, a.email]
           .filter(Boolean)
           .map((v) => String(v))
           .includes(normalized)
-      ) || null
-    );
+      );
+    if (matchedById) return matchedById;
   }
 
   if (purpose === 'clients') {
     return selectAccount(accounts, a => a.useForClients);
+  }
+
+  if (purpose === 'leads') {
+    // Prefer dedicated lead account; fallback to client account if lead routing is not configured.
+    return selectAccount(accounts, a => a.useForLeads || a.useForClients);
   }
 
   if (purpose === 'campaigns') {

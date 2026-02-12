@@ -51,6 +51,7 @@ exports.sendEmail = async (req, res) => {
     text,
     attachments = [],
     accountId,
+    purpose,
     clientRequestId,
     inReplyTo,
     references
@@ -72,7 +73,7 @@ exports.sendEmail = async (req, res) => {
 
   const settings = await Settings.findOne({});
   const fromName = settings?.generalSettings?.companyName || 'Matlance';
-  const account = await getEmailAccount({ accountId, purpose: 'clients' });
+  const account = await getEmailAccount({ accountId, purpose: purpose || 'clients' });
   const { html: finalHtml, attachments: logoAttachments } = injectInlineLogo(html, settings?.generalSettings || {});
   const baseUrl = settings?.generalSettings?.publicTrackingUrl || process.env.API_URL || getBaseUrl();
 
@@ -216,6 +217,7 @@ exports.getEmailAccounts = async (req, res) => {
     username: acc.username || acc.email || '',
     useForCampaigns: Boolean(acc.useForCampaigns),
     useForClients: Boolean(acc.useForClients),
+    useForLeads: Boolean(acc.useForLeads),
     isVerified: Boolean(acc.isVerified)
   }));
 

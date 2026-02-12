@@ -52,7 +52,7 @@ interface SettingsState {
   fetchPermissions: () => Promise<void>;
   addEmailAccount: (account: Omit<EmailAccount, 'id' | 'sentCount'> & { isVerified?: boolean }) => Promise<void>;
   removeEmailAccount: (id: string) => Promise<void>;
-  updateRouting: (id: string, updates: Partial<Pick<EmailAccount, 'useForCampaigns' | 'useForClients'>>) => Promise<void>;
+  updateRouting: (id: string, updates: Partial<Pick<EmailAccount, 'useForCampaigns' | 'useForClients' | 'useForLeads'>>) => Promise<void>;
   verifyAccount: (id: string) => Promise<boolean>;
   updateGeneralSettings: (settings: Partial<GeneralSettings>) => Promise<void>;
   updateSystemTemplate: (key: keyof SystemTemplates, template: { subject: string; body: string }) => Promise<void>;
