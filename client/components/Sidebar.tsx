@@ -23,6 +23,7 @@ import {
   Inbox,
   Home,
   AlertTriangle
+  , Activity
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -58,6 +59,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, toggleSidebar }) => {
     { name: 'Campaigns', icon: Send, path: '/campaigns', resource: 'campaigns' }, 
     { name: 'Payments', icon: CreditCard, path: '/payments', resource: 'payments' },
     { name: 'Database', icon: Database, path: '/database', roles: ['admin'] },
+    { name: 'Activity Logs', icon: Activity, path: '/activity-logs', resource: 'activityLogs' },
     { name: 'Error Logs', icon: AlertTriangle, path: '/error-logs', roles: ['admin'] },
     { name: 'Settings', icon: Settings, path: '/settings', resource: 'settings' },
   ];

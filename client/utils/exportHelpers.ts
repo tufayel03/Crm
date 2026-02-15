@@ -5,7 +5,19 @@ import { Client, Payment, GeneralSettings } from '../types';
 import { createInvoiceDoc } from './pdfGenerator';
 import { getInvoiceDisplayId } from './invoiceId';
 import { addSheetFromObjects, downloadWorkbook } from './excelUtils';
-import { getAuthToken, withUploadToken } from './api';
+import { apiRequest, getAuthToken, withUploadToken } from './api';
+
+const trackActivity = (action: string, details: string) => {
+  void apiRequest('/api/v1/audit', {
+    method: 'POST',
+    body: JSON.stringify({
+      action,
+      module: 'exports',
+      details,
+      severity: 'info'
+    })
+  }).catch(() => {});
+};
 
 // Helper to convert data URL to Blob
 const dataURLToBlob = (dataURL: string) => {
@@ -70,6 +82,7 @@ const createClientSheet = (client: Client): ExcelJS.Workbook => {
 export const downloadClientExcel = async (client: Client) => {
   const wb = createClientSheet(client);
   await downloadWorkbook(wb, `${client.companyName.replace(/[^a-z0-9]/gi, '_')}_Data.xlsx`);
+  trackActivity('file.download_excel', `Downloaded client excel for ${client.contactName || client.companyName || client.id}`);
 };
 
 // NEW: Helper to download duplicates found during import
@@ -86,6 +99,7 @@ export const downloadDuplicates = async (data: any[], type: 'leads' | 'clients')
   const wb = new ExcelJS.Workbook();
   addSheetFromObjects(wb, "Duplicates", cleanData);
   await downloadWorkbook(wb, `Matlance_${type}_Duplicates_${new Date().toISOString().split('T')[0]}.xlsx`);
+  trackActivity('file.download_duplicates', `Downloaded ${type} duplicates report (${cleanData.length} row(s))`);
 };
 
 const resolveDocUrls = (doc: any): string[] => {
@@ -187,6 +201,7 @@ export const downloadClientZip = async (client: Client) => {
   a.download = `${folderName}_Full_Package.zip`;
   a.click();
   window.URL.revokeObjectURL(url);
+  trackActivity('file.download_client_zip', `Downloaded client package zip for ${client.contactName || client.companyName || client.id}`);
 };
 
 export const downloadBulkClientsZip = async (
@@ -287,6 +302,7 @@ export const downloadBulkClientsZip = async (
     document.body.removeChild(a);
 
     setTimeout(() => window.URL.revokeObjectURL(url), 2000);
+    trackActivity('file.download_bulk_clients_zip', `Downloaded bulk clients zip (${totalClients} client(s))`);
   } catch (err) {
     console.error("ZIP Generation Failed:", err);
     throw new Error("Failed to compress files. The dataset might be too large for browser memory.");
@@ -344,4 +360,5 @@ export const downloadBulkInvoicesZip = async (
   a.download = `Matlance_Bulk_Invoices_${dateStr}.zip`;
   a.click();
   window.URL.revokeObjectURL(url);
+  trackActivity('file.download_bulk_invoices_zip', `Downloaded bulk invoices zip (${payments.length} invoice(s))`);
 };

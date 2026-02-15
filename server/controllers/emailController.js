@@ -10,6 +10,7 @@ const {
   normalizeMessageId,
   parseReferences
 } = require('../utils/mailThread');
+const { logActivity } = require('../utils/activityLogger');
 
 let syntheticSentUidCounter = 0;
 const nextSyntheticSentUid = () => {
@@ -189,6 +190,15 @@ exports.sendEmail = async (req, res) => {
     }
     return res.status(500).json({ message: 'Failed to send email: ' + firstError, failures });
   }
+
+  await logActivity(req, {
+    action: failures.length > 0 ? 'email.send_partial' : 'email.sent',
+    module: 'mailbox',
+    targetType: 'email',
+    details: failures.length > 0
+      ? `Email send partial success: ${sentMessages.length}/${recipients.length}`
+      : `Email sent to ${sentMessages.length} recipient(s)`
+  });
 
   if (sentMessages.length === 1 && recipients.length === 1) {
     return res.json(sentMessages[0]);

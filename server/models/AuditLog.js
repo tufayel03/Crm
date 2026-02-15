@@ -3,8 +3,17 @@
 const AuditLogSchema = new mongoose.Schema({
   userId: String,
   userName: String,
+  userEmail: String,
   action: String,
   details: String,
+  module: String,
+  severity: { type: String, default: 'info' },
+  targetType: String,
+  targetId: String,
+  method: String,
+  path: String,
+  ip: String,
+  metadata: mongoose.Schema.Types.Mixed,
   timestamp: { type: Date, default: Date.now }
 }, { timestamps: true });
 

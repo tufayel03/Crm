@@ -30,6 +30,7 @@ const Settings = lazy(() => import('./pages/Settings'));
 const Mailbox = lazy(() => import('./pages/Mailbox'));
 const Database = lazy(() => import('./pages/Database'));
 const ErrorLogs = lazy(() => import('./pages/ErrorLogs'));
+const ActivityLogs = lazy(() => import('./pages/ActivityLogs'));
 
 const LoadingFallback = () => (
   <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -66,6 +67,7 @@ const App: React.FC = () => {
             <Route path="/clients/:id" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']} requiredPermission="clients"><ClientDetail /></ProtectedRoute>} />
             <Route path="/services" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><ServicePlans /></ProtectedRoute>} />
             <Route path="/database" element={<ProtectedRoute allowedRoles={['admin']}><Database /></ProtectedRoute>} />
+            <Route path="/activity-logs" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']} requiredPermission="activityLogs"><ActivityLogs /></ProtectedRoute>} />
             <Route path="/error-logs" element={<ProtectedRoute allowedRoles={['admin']}><ErrorLogs /></ProtectedRoute>} />
             <Route path="/tasks" element={<ProtectedRoute requiredPermission="tasks"><Tasks /></ProtectedRoute>} />
             <Route path="/meetings" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']} requiredPermission="meetings"><Meetings /></ProtectedRoute>} />

@@ -16,6 +16,7 @@ const ServicePlan = require('../models/ServicePlan');
 const Settings = require('../models/Settings');
 const Task = require('../models/Task');
 const User = require('../models/User');
+const { logActivity } = require('../utils/activityLogger');
 
 const collections = [
   { name: 'users', model: User },
@@ -124,6 +125,13 @@ exports.exportBackup = async (req, res) => {
   const content = await zip.generateAsync({ type: 'nodebuffer' });
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const filename = `Matlance_Full_Backup_${timestamp}.zip`;
+
+  await logActivity(req, {
+    action: 'database.export',
+    module: 'database',
+    targetType: 'backup',
+    details: `Database backup exported (${exportCollections.length} collection(s))`
+  });
 
   res.setHeader('Content-Type', 'application/zip');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -305,6 +313,13 @@ exports.importBackup = async (req, res) => {
     session.endSession();
     const uploadsDir = path.join(__dirname, '..', 'uploads');
     await restoreUploadsFromZip(zip, uploadsDir, mode);
+    await logActivity(req, {
+      action: mode === 'replace' ? 'database.replace' : 'database.import',
+      module: 'database',
+      targetType: 'backup',
+      details: mode === 'replace' ? 'Database replaced from backup file' : 'Database merged from backup file',
+      metadata: { summary }
+    });
     return res.json({ message: mode === 'replace' ? 'Database replaced successfully.' : 'Database merged successfully.', summary });
   } catch (err) {
     if (session) {
@@ -328,6 +343,13 @@ exports.importBackup = async (req, res) => {
         const summary = await merge(null);
         const uploadsDir = path.join(__dirname, '..', 'uploads');
         await restoreUploadsFromZip(zip, uploadsDir, mode);
+        await logActivity(req, {
+          action: mode === 'replace' ? 'database.replace' : 'database.import',
+          module: 'database',
+          targetType: 'backup',
+          details: mode === 'replace' ? 'Database replaced from backup file' : 'Database merged from backup file',
+          metadata: { summary, fallbackNoTransaction: true }
+        });
         return res.json({ message: mode === 'replace' ? 'Database replaced successfully.' : 'Database merged successfully.', summary });
       } catch (retryErr) {
         return res.status(500).json({ message: retryErr.message || 'Restore failed.' });

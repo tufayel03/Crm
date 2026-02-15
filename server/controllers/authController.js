@@ -7,6 +7,7 @@ const AuditLog = require('../models/AuditLog');
 const Settings = require('../models/Settings');
 const { sendMail } = require('../utils/mailer');
 const { getEmailAccount } = require('../utils/emailAccounts');
+const { logActivity } = require('../utils/activityLogger');
 
 const getTrustedBaseUrl = (req) => {
   if (process.env.APP_BASE_URL) return String(process.env.APP_BASE_URL).replace(/\/$/, '');
@@ -91,6 +92,14 @@ exports.login = async (req, res) => {
   });
 
   const token = generateToken(user._id, String(session._id));
+  await logActivity(req, {
+    action: 'auth.login_success',
+    module: 'auth',
+    severity: 'info',
+    targetType: 'user',
+    targetId: user._id,
+    details: `User logged in: ${user.email}`
+  });
   res.json({
     token,
     user: {
@@ -120,6 +129,15 @@ exports.register = async (req, res) => {
     email: email.toLowerCase().trim(),
     password,
     role: role || 'agent'
+  });
+
+  await logActivity(req, {
+    action: 'auth.user_created',
+    module: 'auth',
+    severity: 'info',
+    targetType: 'user',
+    targetId: user._id,
+    details: `User created: ${user.email} (${user.role})`
   });
 
   const token = generateToken(user._id);
@@ -244,5 +262,13 @@ exports.changePassword = async (req, res) => {
 
   user.password = newPassword;
   await user.save();
+  await logActivity(req, {
+    action: 'auth.password_changed',
+    module: 'auth',
+    severity: 'info',
+    targetType: 'user',
+    targetId: user._id,
+    details: `Password changed for ${user.email}`
+  });
   res.json({ message: 'Password updated' });
 };

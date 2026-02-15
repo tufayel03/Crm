@@ -13,6 +13,7 @@ const RESOURCES: { id: PermissionResource; label: string }[] = [
   { id: 'mailbox', label: 'Mailbox' },
   { id: 'campaigns', label: 'Campaigns' },
   { id: 'payments', label: 'Payments & Revenue' },
+  { id: 'activityLogs', label: 'Activity Logs' },
   { id: 'team', label: 'Team Management' },
   { id: 'settings', label: 'Settings' }
 ];

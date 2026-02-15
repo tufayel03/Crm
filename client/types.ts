@@ -238,6 +238,7 @@ export type PermissionResource =
   | 'mailbox'
   | 'campaigns'
   | 'payments'
+  | 'activityLogs'
   | 'team'
   | 'settings';
 
@@ -288,9 +289,18 @@ export interface Attachment {
 
 export interface AuditLog {
   id: string;
-  userId: string;
-  userName: string;
+  userId?: string;
+  userName?: string;
+  userEmail?: string;
   action: string;
   details: string;
+  module?: string;
+  severity?: string;
+  targetType?: string;
+  targetId?: string;
+  method?: string;
+  path?: string;
+  ip?: string;
+  metadata?: Record<string, unknown>;
   timestamp: string;
 }

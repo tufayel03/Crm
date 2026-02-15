@@ -2,6 +2,7 @@
 const Client = require('../models/Client');
 const { getNextSequence } = require('../utils/counter');
 const { generateUniqueShortId } = require('../utils/ids');
+const { logActivity } = require('../utils/activityLogger');
 
 const CONVERTED_STATUSES = ['Converted', 'Closed Won'];
 const AGENT_ROLE = 'agent';
@@ -85,6 +86,14 @@ exports.createLead = async (req, res) => {
     source
   });
 
+  await logActivity(req, {
+    action: 'lead.created',
+    module: 'leads',
+    targetType: 'lead',
+    targetId: lead._id,
+    details: `Lead created: ${lead.name} (${lead.email || 'no-email'})`
+  });
+
   res.status(201).json(lead);
 };
 
@@ -100,12 +109,25 @@ exports.updateLead = async (req, res) => {
   if (req.body && req.body.status && CONVERTED_STATUSES.includes(req.body.status)) {
     await ensureClientForLead(lead);
   }
+  await logActivity(req, {
+    action: 'lead.updated',
+    module: 'leads',
+    targetType: 'lead',
+    targetId: lead._id,
+    details: `Lead updated: ${lead.name} (${lead.status})`
+  });
   res.json(lead);
 };
 
 exports.deleteLeads = async (req, res) => {
   const { ids } = req.body;
   const result = await Lead.deleteMany({ _id: { $in: ids }, ...getLeadScope(req) });
+  await logActivity(req, {
+    action: 'lead.deleted',
+    module: 'leads',
+    targetType: 'lead',
+    details: `Deleted ${result.deletedCount || 0} lead(s)`
+  });
   res.json({ message: 'Leads removed', deletedCount: result.deletedCount || 0 });
 };
 
@@ -157,6 +179,12 @@ exports.revealContact = async (req, res) => {
 exports.bulkAssign = async (req, res) => {
   const { ids, agentId, agentName } = req.body;
   await Lead.updateMany({ _id: { $in: ids } }, { assignedAgentId: agentId, assignedAgentName: agentName });
+  await logActivity(req, {
+    action: 'lead.bulk_assign',
+    module: 'leads',
+    targetType: 'lead',
+    details: `Assigned ${Array.isArray(ids) ? ids.length : 0} lead(s) to ${agentName || agentId || 'Unassigned'}`
+  });
   res.json({ message: 'Leads assigned' });
 };
 
@@ -169,6 +197,12 @@ exports.bulkStatusUpdate = async (req, res) => {
       await ensureClientForLead(lead);
     }
   }
+  await logActivity(req, {
+    action: 'lead.bulk_status',
+    module: 'leads',
+    targetType: 'lead',
+    details: `Updated status to "${status}" for ${Array.isArray(ids) ? ids.length : 0} lead(s)`
+  });
   res.json({ message: 'Leads updated' });
 };
 
@@ -213,6 +247,13 @@ exports.importLeads = async (req, res) => {
 
     created.push(lead);
   }
+
+  await logActivity(req, {
+    action: 'lead.imported',
+    module: 'leads',
+    targetType: 'lead',
+    details: `Lead import completed. Added: ${created.length}, duplicates: ${duplicates.length}`
+  });
 
   res.json({ added: created.length, duplicates });
 };

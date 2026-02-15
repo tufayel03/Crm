@@ -7,6 +7,7 @@ const Settings = require('../models/Settings');
 const Lead = require('../models/Lead');
 const Client = require('../models/Client');
 const { applyTemplateTokens } = require('../utils/templateTokens');
+const { logActivity } = require('../utils/activityLogger');
 
 const ensureUniqueTrackingIds = (queue = []) => {
   const seen = new Set();
@@ -31,6 +32,13 @@ exports.createCampaign = async (req, res) => {
     payload.queue = ensureUniqueTrackingIds(payload.queue);
   }
   const campaign = await Campaign.create(payload);
+  await logActivity(req, {
+    action: 'campaign.created',
+    module: 'campaigns',
+    targetType: 'campaign',
+    targetId: campaign._id,
+    details: `Campaign created: ${campaign.name}`
+  });
   res.status(201).json(campaign);
 };
 
@@ -41,12 +49,26 @@ exports.updateCampaign = async (req, res) => {
   }
   const campaign = await Campaign.findByIdAndUpdate(req.params.id, updates, { new: true });
   if (!campaign) return res.status(404).json({ message: 'Campaign not found' });
+  await logActivity(req, {
+    action: 'campaign.updated',
+    module: 'campaigns',
+    targetType: 'campaign',
+    targetId: campaign._id,
+    details: `Campaign updated: ${campaign.name}`
+  });
   res.json(campaign);
 };
 
 exports.deleteCampaign = async (req, res) => {
   const campaign = await Campaign.findByIdAndDelete(req.params.id);
   if (!campaign) return res.status(404).json({ message: 'Campaign not found' });
+  await logActivity(req, {
+    action: 'campaign.deleted',
+    module: 'campaigns',
+    targetType: 'campaign',
+    targetId: campaign._id,
+    details: `Campaign deleted: ${campaign.name}`
+  });
   res.json({ message: 'Campaign removed' });
 };
 
@@ -58,6 +80,13 @@ exports.sendCampaignBatch = async (req, res) => {
   // Use the safe runner logic which handles rate limits and locking
   const { runBatchForCampaign } = require('../services/campaignRunner');
   await runBatchForCampaign(campaign, batchSize);
+  await logActivity(req, {
+    action: 'campaign.run_batch',
+    module: 'campaigns',
+    targetType: 'campaign',
+    targetId: campaign._id,
+    details: `Campaign batch run started: ${campaign.name} (batchSize=${batchSize})`
+  });
 
   // Re-fetch to return latest state
   const updated = await Campaign.findById(req.params.id);
@@ -93,6 +122,13 @@ exports.retryFailedRecipients = async (req, res) => {
 
   const { runBatchForCampaign } = require('../services/campaignRunner');
   await runBatchForCampaign(campaign, 50);
+  await logActivity(req, {
+    action: 'campaign.retry_failed',
+    module: 'campaigns',
+    targetType: 'campaign',
+    targetId: campaign._id,
+    details: `Retry failed recipients: ${campaign.name} (${retriedCount} retried)`
+  });
 
   const updated = await Campaign.findById(req.params.id);
   res.json(updated);
@@ -200,6 +236,13 @@ exports.retargetUnopenedRecipients = async (req, res) => {
 
   const { runBatchForCampaign } = require('../services/campaignRunner');
   await runBatchForCampaign(created, 50);
+  await logActivity(req, {
+    action: 'campaign.retarget_unopened',
+    module: 'campaigns',
+    targetType: 'campaign',
+    targetId: created._id,
+    details: `Retarget campaign created from "${sourceCampaign.name}" with ${queue.length} recipients`
+  });
 
   const updated = await Campaign.findById(created._id);
   return res.status(201).json(updated);

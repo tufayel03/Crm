@@ -5,6 +5,7 @@ const fs = require('fs/promises');
 const { getNextSequence } = require('../utils/counter');
 const { generateUniqueShortId } = require('../utils/ids');
 const { uploadToS3, deleteFromS3, isS3Configured } = require('../utils/s3');
+const { logActivity } = require('../utils/activityLogger');
 
 const ensureClientUniqueIds = async () => {
   // Backfill uniqueId from legacy shortId, then remove shortId
@@ -73,12 +74,27 @@ exports.createClient = async (req, res) => {
     walletBalance: req.body.walletBalance || 0
   });
 
+  await logActivity(req, {
+    action: 'client.created',
+    module: 'clients',
+    targetType: 'client',
+    targetId: client._id,
+    details: `Client created: ${client.contactName} (${client.email || 'no-email'})`
+  });
+
   res.status(201).json(client);
 };
 
 exports.updateClient = async (req, res) => {
   const client = await Client.findByIdAndUpdate(req.params.id, req.body, { new: true });
   if (!client) return res.status(404).json({ message: 'Client not found' });
+  await logActivity(req, {
+    action: 'client.updated',
+    module: 'clients',
+    targetType: 'client',
+    targetId: client._id,
+    details: `Client updated: ${client.contactName} (${client.email || 'no-email'})`
+  });
   res.json(client);
 };
 
@@ -112,6 +128,12 @@ exports.deleteClients = async (req, res) => {
   }
 
   await Client.deleteMany({ _id: { $in: ids } });
+  await logActivity(req, {
+    action: 'client.deleted',
+    module: 'clients',
+    targetType: 'client',
+    details: `Deleted ${Array.isArray(ids) ? ids.length : 0} client(s)`
+  });
   res.json({ message: 'Clients removed' });
 };
 
@@ -359,6 +381,13 @@ exports.importClients = async (req, res) => {
 
     created.push(client);
   }
+
+  await logActivity(req, {
+    action: 'client.imported',
+    module: 'clients',
+    targetType: 'client',
+    details: `Client import completed. Added: ${created.length}, duplicates: ${duplicates.length}`
+  });
 
   res.json({ added: created.length, duplicates });
 };

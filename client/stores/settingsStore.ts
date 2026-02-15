@@ -23,6 +23,7 @@ const DEFAULT_PERMISSIONS: AccessControlConfig = {
     mailbox: { view: true, manage: true, export: false },
     campaigns: { view: true, manage: true, export: true },
     payments: { view: true, manage: true, export: true },
+    activityLogs: { view: true, manage: true, export: true },
     team: { view: true, manage: true, export: false },
     settings: { view: true, manage: true, export: false },
   },
@@ -35,6 +36,7 @@ const DEFAULT_PERMISSIONS: AccessControlConfig = {
     mailbox: { view: true, manage: true, export: false },
     campaigns: { view: false, manage: false, export: false },
     payments: { view: false, manage: false, export: false },
+    activityLogs: { view: false, manage: false, export: false },
     team: { view: false, manage: false, export: false },
     settings: { view: false, manage: false, export: false },
   }

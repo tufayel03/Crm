@@ -1,6 +1,6 @@
 const User = require('../models/User');
 
-const RESOURCES = ['dashboard', 'leads', 'clients', 'tasks', 'meetings', 'mailbox', 'campaigns', 'payments', 'team', 'settings'];
+const RESOURCES = ['dashboard', 'leads', 'clients', 'tasks', 'meetings', 'mailbox', 'campaigns', 'payments', 'activityLogs', 'team', 'settings'];
 const ACTIONS = ['view', 'manage', 'export'];
 
 const sanitizePermissionOverrides = (value) => {

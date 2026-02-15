@@ -1,4 +1,5 @@
-﻿const EmailTemplate = require('../models/EmailTemplate');
+const EmailTemplate = require('../models/EmailTemplate');
+const { logActivity } = require('../utils/activityLogger');
 
 const DEFAULT_TEMPLATES = [
   {
@@ -89,18 +90,38 @@ exports.getTemplates = async (req, res) => {
 
 exports.createTemplate = async (req, res) => {
   const template = await EmailTemplate.create(req.body);
+  await logActivity(req, {
+    action: 'template.created',
+    module: 'templates',
+    targetType: 'template',
+    targetId: template._id,
+    details: `Template created: ${template.name || 'Untitled'}`
+  });
   res.status(201).json(template);
 };
 
 exports.updateTemplate = async (req, res) => {
   const template = await EmailTemplate.findByIdAndUpdate(req.params.id, req.body, { new: true });
   if (!template) return res.status(404).json({ message: 'Template not found' });
+  await logActivity(req, {
+    action: 'template.updated',
+    module: 'templates',
+    targetType: 'template',
+    targetId: template._id,
+    details: `Template updated: ${template.name || 'Untitled'}`
+  });
   res.json(template);
 };
 
 exports.deleteTemplate = async (req, res) => {
   const template = await EmailTemplate.findByIdAndDelete(req.params.id);
   if (!template) return res.status(404).json({ message: 'Template not found' });
+  await logActivity(req, {
+    action: 'template.deleted',
+    module: 'templates',
+    targetType: 'template',
+    targetId: template._id,
+    details: `Template deleted: ${template.name || 'Untitled'}`
+  });
   res.json({ message: 'Template removed' });
 };
-

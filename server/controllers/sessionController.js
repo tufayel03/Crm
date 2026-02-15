@@ -1,4 +1,5 @@
 const UserSession = require('../models/UserSession');
+const { logActivity } = require('../utils/activityLogger');
 
 const toSessionDto = (session, currentSessionId) => ({
   id: String(session._id),
@@ -51,5 +52,12 @@ exports.revokeSession = async (req, res) => {
 
   session.revokedAt = new Date();
   await session.save();
+  await logActivity(req, {
+    action: 'auth.session_revoked',
+    module: 'auth',
+    targetType: 'session',
+    targetId: session._id,
+    details: `Session revoked for ${session.userEmail || session.userName || 'unknown user'}`
+  });
   res.json({ message: 'Session revoked' });
 };
