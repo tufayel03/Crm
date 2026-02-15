@@ -2,6 +2,26 @@
 import { EditorBlock, GlobalStyle, Asset } from './types';
 import { useSettingsStore } from '../../stores/settingsStore';
 
+const normalizeBaseUrl = (raw?: string) => {
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed.replace(/\/+$/, '');
+  return `https://${trimmed.replace(/\/+$/, '')}`;
+};
+
+const toAbsoluteAssetUrl = (value: string) => {
+  if (!value) return value;
+  if (/^https?:\/\//i.test(value) || value.startsWith('data:') || value.startsWith('cid:')) return value;
+  const settings = useSettingsStore.getState().generalSettings;
+  const configuredBase = normalizeBaseUrl(settings.companyWebsite);
+  if (value.startsWith('/')) {
+    if (configuredBase) return `${configuredBase}${value}`;
+    if (typeof window !== 'undefined') return `${window.location.origin}${value}`;
+  }
+  return value;
+};
+
 // Helper to replace {{asset_name}} with url and handle company logo
 const processVariables = (text: string, assets: Asset[], logoUrl?: string) => {
   let processed = text;
@@ -28,7 +48,7 @@ const processVariables = (text: string, assets: Asset[], logoUrl?: string) => {
   assets.forEach(asset => {
     const escapedName = asset.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regex = new RegExp(`{{${escapedName}}}`, 'g');
-    processed = processed.replace(regex, asset.url);
+    processed = processed.replace(regex, toAbsoluteAssetUrl(asset.url));
   });
   return processed;
 };
@@ -39,7 +59,7 @@ const resolveAssetUrl = (value: string | undefined, assets: Asset[]) => {
   if (!match) return value;
   const name = match[1].trim();
   const asset = assets.find(a => a.name === name);
-  return asset?.url || value;
+  return asset?.url ? toAbsoluteAssetUrl(asset.url) : value;
 };
 
 export const renderBlockContent = (b: EditorBlock, globalStyle: GlobalStyle, assets: Asset[] = [], logoUrl?: string, blockId?: string): string => {
