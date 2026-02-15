@@ -10,6 +10,8 @@ interface CreateCampaignDTO {
   name: string;
   templateId: string;
   templateName: string;
+  senderAccountId?: string;
+  senderAccountIds?: string[];
   targetStatus: string;
   targetAgentId: string;
   targetOutcome: string;
@@ -38,6 +40,8 @@ interface CampaignState {
   cloneCampaign: (id: string) => Promise<void>;
   toggleCampaignStatus: (id: string, action: 'resume' | 'pause') => Promise<void>;
   startCampaignNow: (id: string) => Promise<void>;
+  retryFailedRecipients: (id: string) => Promise<void>;
+  retargetUnopenedRecipients: (id: string, templateId: string, senderAccountIds: string[]) => Promise<Campaign>;
   deleteCampaign: (id: string) => Promise<void>;
 
   sendTestEmail: (templateId: string, email: string) => Promise<boolean>;
@@ -186,6 +190,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   createCampaign: async (data) => {
     const leads = useLeadsStore.getState().leads;
     const clients = useClientsStore.getState().clients;
+    const emailAccounts = useSettingsStore.getState().emailAccounts;
 
     const selectedStatuses = Array.isArray(data.targetStatuses) ? data.targetStatuses.filter(Boolean) : [];
     const selectedAgents = Array.isArray(data.targetAgentIds) ? data.targetAgentIds.filter(Boolean) : [];
@@ -252,29 +257,50 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       }
     });
 
+    const selectedSenderIds = Array.isArray(data.senderAccountIds) && data.senderAccountIds.length > 0
+      ? data.senderAccountIds
+      : (data.senderAccountId ? [data.senderAccountId] : []);
+    const selectedSenders = selectedSenderIds
+      .map((id) => emailAccounts.find((acc) => acc.id === id))
+      .filter((acc): acc is NonNullable<typeof acc> => Boolean(acc));
+    if (selectedSenders.length === 0) {
+      throw new Error('Please select at least one sender email for this campaign.');
+    }
+
+    const recipientsList = Array.from(uniqueRecipients.values());
     const usedTrackingIds = new Set<string>();
-    const queue: EmailQueueItem[] = Array.from(uniqueRecipients.values()).map((l) => {
+    const queue: EmailQueueItem[] = recipientsList.map((l, index) => {
       let trackingId = createTrackingId();
       while (usedTrackingIds.has(trackingId)) {
         trackingId = createTrackingId();
       }
       usedTrackingIds.add(trackingId);
+      const assignedSender = selectedSenders.length > 0
+        ? selectedSenders[index % selectedSenders.length]
+        : undefined;
       return {
         leadId: l.id,
         leadName: l.name,
         leadEmail: l.email,
+        senderAccountId: assignedSender?.id,
+        senderAccountEmail: assignedSender?.email,
         status: 'Pending',
         trackingId
       };
     });
 
     const isScheduled = !!data.scheduledAt;
+    const selectedSender = selectedSenders[0];
 
     const newCampaign: Campaign = {
       id: 'camp-' + Math.random().toString(36).substr(2, 9),
       name: data.name,
       templateId: data.templateId,
       templateName: data.templateName,
+      senderAccountId: selectedSender?.id,
+      senderAccountEmail: selectedSender?.email,
+      senderAccountIds: selectedSenders.map((acc) => acc.id),
+      senderAccountEmails: selectedSenders.map((acc) => acc.email),
       status: isScheduled ? 'Scheduled' : 'Queued',
       targetStatus: data.targetStatus,
       targetStatuses: selectedStatuses,
@@ -360,6 +386,22 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     });
     await apiRequest(`/api/v1/campaigns/${id}/send`, { method: 'POST', body: JSON.stringify({ batchSize: 50 }) });
     set(state => ({ campaigns: state.campaigns.map(c => c.id === id ? updated : c) }));
+  },
+
+  retryFailedRecipients: async (id) => {
+    const updated = await apiRequest<Campaign>(`/api/v1/campaigns/${id}/retry-failed`, {
+      method: 'POST'
+    });
+    set((state) => ({ campaigns: state.campaigns.map((c) => (c.id === id ? updated : c)) }));
+  },
+
+  retargetUnopenedRecipients: async (id, templateId, senderAccountIds) => {
+    const created = await apiRequest<Campaign>(`/api/v1/campaigns/${id}/retarget-unopened`, {
+      method: 'POST',
+      body: JSON.stringify({ templateId, senderAccountIds })
+    });
+    set((state) => ({ campaigns: [created, ...state.campaigns] }));
+    return created;
   },
 
   deleteCampaign: async (id) => {

@@ -192,6 +192,23 @@ const Mailbox: React.FC = () => {
     const removeCcRecipient = (email: string) => {
         setComposeCcRecipients((prev) => prev.filter((x) => x.toLowerCase() !== email.toLowerCase()));
     };
+
+    const parseRecipients = (raw: string) => {
+        const parts = String(raw || '')
+            .split(/[,\n;]+/g)
+            .map((value) => value.trim())
+            .filter(Boolean);
+        const output: string[] = [];
+        const seen = new Set<string>();
+        parts.forEach((email) => {
+            const key = email.toLowerCase();
+            if (seen.has(key)) return;
+            seen.add(key);
+            output.push(email);
+        });
+        return output;
+    };
+
     const sanitizeEmailHtml = (value: string) => {
         const raw = String(value || '');
         const hasHtmlTag = /<\w+[\s\S]*?>/i.test(raw);
@@ -562,6 +579,67 @@ const Mailbox: React.FC = () => {
         return { type: 'General', badgeColor: 'bg-slate-100 text-slate-700', data: null, name: email.fromName };
     };
 
+    const getPrimaryRecipientEmail = (raw: string) => {
+        const parts = String(raw || '')
+            .split(/[;,]/g)
+            .map((value) => value.trim())
+            .filter(Boolean);
+        return parts[0] || '';
+    };
+
+    const buildMailboxTokenData = (recipientEmail?: string) => {
+        const baseTokens = buildCompanyTokens(generalSettings);
+        const normalizedEmail = String(recipientEmail || '').trim().toLowerCase();
+        const matchedClient = normalizedEmail
+            ? clients.find((c) => String(c.email || '').trim().toLowerCase() === normalizedEmail)
+            : null;
+        const matchedLead = !matchedClient && normalizedEmail
+            ? leads.find((l) => String(l.email || '').trim().toLowerCase() === normalizedEmail)
+            : null;
+        const fullName = String(
+            matchedClient?.contactName ||
+            matchedLead?.name ||
+            'Customer'
+        ).trim() || 'Customer';
+        const firstName = fullName.split(' ')[0] || 'Customer';
+        const leadEmail = matchedClient?.email || matchedLead?.email || recipientEmail || '';
+
+        return {
+            ...baseTokens,
+            // Person tokens
+            lead_name: fullName,
+            lead_first_name: firstName,
+            lead_email: leadEmail,
+            client_name: matchedClient?.contactName || fullName,
+            full_name: fullName,
+            first_name: firstName,
+
+            // Invoice tokens
+            invoice_id: '',
+            amount: '',
+            due_date: '',
+            service: '',
+
+            // Meeting tokens (primary names)
+            meeting_title: '',
+            time: '',
+            date: '',
+            link: '',
+            host_name: '',
+
+            // Meeting token aliases
+            mtg_title: '',
+            mtg_time: '',
+            mtg_date: '',
+            mtg_link: '',
+
+            // Additional company aliases
+            company_addr: baseTokens.company_address || '',
+            company_web: baseTokens.company_website || '',
+            unsubscribe: baseTokens.unsubscribe_link || ''
+        };
+    };
+
     // --- Reply Logic ---
     const handleTemplateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const tId = e.target.value;
@@ -618,14 +696,7 @@ const Mailbox: React.FC = () => {
         const template = templates.find((t) => t.id === templateId);
         if (!template) return;
 
-        const baseTokens = buildCompanyTokens(generalSettings);
-        const tokenData = {
-            ...baseTokens,
-            lead_name: 'Customer',
-            lead_first_name: 'Customer',
-            lead_email: '',
-            client_name: 'Customer'
-        };
+        const tokenData = buildMailboxTokenData(getPrimaryRecipientEmail(composeTo));
 
         setComposeSubject(applyTemplateTokens(template.subject, tokenData));
         const processedHtml = applyTemplateTokens(template.htmlContent || '', tokenData);
@@ -644,7 +715,7 @@ const Mailbox: React.FC = () => {
     };
 
     const handleSendCompose = async () => {
-        const to = composeTo.trim();
+        const toRecipients = parseRecipients(composeTo);
         const pendingCc = normalizeEmailToken(composeCcInput);
         if (pendingCc) addCcTokens(pendingCc);
         const ccValues = [...composeCcRecipients, ...(pendingCc ? [pendingCc] : [])]
@@ -660,17 +731,15 @@ const Mailbox: React.FC = () => {
             }
         });
         const cc = ccUnique.join(', ');
-        const subject = composeSubject.trim();
-        const body = htmlToPlainText(composeBody).trim();
-        if (!to) {
+        if (toRecipients.length === 0) {
             setComposeError('Recipient email is required.');
             return;
         }
-        if (!subject) {
+        if (!composeSubject.trim()) {
             setComposeError('Subject is required.');
             return;
         }
-        if (!body && composeAttachments.length === 0) {
+        if (!htmlToPlainText(composeBody).trim() && composeAttachments.length === 0) {
             setComposeError('Write a message or attach a file.');
             return;
         }
@@ -690,34 +759,58 @@ const Mailbox: React.FC = () => {
                 }))
             );
 
-            const htmlBody = sanitizeEmailHtml(composeBody);
-            const textBody = htmlToPlainText(composeBody);
-            const clientRequestId = `compose-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+            const requestIdBase = `compose-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+            let successCount = 0;
+            const failedRecipients: string[] = [];
 
-            const response: any = await apiRequest('/api/v1/email/send', {
-                method: 'POST',
-                body: JSON.stringify({
-                    to: composeTo,
-                    ...(cc ? { cc } : {}),
-                    subject: composeSubject,
-                    html: htmlBody,
-                    text: textBody,
-                    ...(composeAccountId ? { accountId: composeAccountId } : {}),
-                    clientRequestId,
-                    attachments
-                })
-            });
+            for (const recipient of toRecipients) {
+                try {
+                    const tokenData = buildMailboxTokenData(recipient);
+                    const renderedSubject = applyTemplateTokens(composeSubject, tokenData);
+                    const renderedHtml = applyTemplateTokens(composeBody, tokenData);
+                    const htmlBody = sanitizeEmailHtml(renderedHtml);
+                    const textBody = htmlToPlainText(renderedHtml);
 
-            if (response?.id) {
-                useMailStore.getState().addEmail(response);
-            } else if (Array.isArray(response?.sent)) {
-                response.sent.forEach((m: any) => {
-                    if (m?.id) useMailStore.getState().addEmail(m);
-                });
+                    const response: any = await apiRequest('/api/v1/email/send', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            to: recipient,
+                            ...(cc ? { cc } : {}),
+                            subject: renderedSubject,
+                            html: htmlBody,
+                            text: textBody,
+                            ...(composeAccountId ? { accountId: composeAccountId } : {}),
+                            clientRequestId: `${requestIdBase}:${recipient.toLowerCase()}`,
+                            attachments
+                        })
+                    });
+
+                    if (response?.id) {
+                        useMailStore.getState().addEmail(response);
+                    } else if (Array.isArray(response?.sent)) {
+                        response.sent.forEach((m: any) => {
+                            if (m?.id) useMailStore.getState().addEmail(m);
+                        });
+                    }
+
+                    successCount += 1;
+                } catch {
+                    failedRecipients.push(recipient);
+                }
+            }
+
+            if (successCount === 0) {
+                throw new Error('Failed to send email to all recipients.');
             }
 
             setIsComposeOpen(false);
-            setSuccessMessage('Email sent successfully!');
+            if (failedRecipients.length > 0) {
+                setSuccessMessage(`Sent to ${successCount}/${toRecipients.length}. Failed: ${failedRecipients.join(', ')}`);
+            } else {
+                setSuccessMessage(toRecipients.length > 1
+                    ? `Email sent to ${toRecipients.length} recipients.`
+                    : 'Email sent successfully!');
+            }
             setTimeout(() => setSuccessMessage(null), 3000);
 
             if (selectedFolder === 'Sent') {

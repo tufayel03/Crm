@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { EmailAccount } from '../../types';
-import { Trash2, AlertCircle, CheckCircle2, RefreshCw, Send, Mail, Briefcase, Users } from 'lucide-react';
+import { Trash2, AlertCircle, CheckCircle2, RefreshCw, Mail, Briefcase, Users } from 'lucide-react';
 
 interface EmailAccountCardProps {
   account: EmailAccount;
@@ -51,24 +51,6 @@ const EmailAccountCard: React.FC<EmailAccountCardProps> = ({ account, onVerify, 
         </div>
 
         <div className="space-y-3 mb-6">
-            <label className="flex items-center justify-between p-2 border border-border rounded-lg cursor-pointer hover:bg-slate-50 transition-all">
-                <div className="flex items-center gap-2">
-                    <div className={`p-1.5 rounded-md ${account.useForCampaigns ? 'bg-purple-100 text-purple-600' : 'bg-slate-100 text-textMuted'}`}>
-                        <Send size={16} />
-                    </div>
-                    <div>
-                        <p className="text-xs font-bold text-textPrimary">Campaigns</p>
-                        <p className="text-[10px] text-textMuted">Bulk sending</p>
-                    </div>
-                </div>
-                <input 
-                    type="checkbox" 
-                    checked={account.useForCampaigns}
-                    onChange={(e) => onUpdate(account.id, { useForCampaigns: e.target.checked })}
-                    className="w-4 h-4 text-primary focus:ring-primary rounded"
-                />
-            </label>
-
             <label className="flex items-center justify-between p-2 border border-border rounded-lg cursor-pointer hover:bg-slate-50 transition-all">
                 <div className="flex items-center gap-2">
                     <div className={`p-1.5 rounded-md ${account.useForClients ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-textMuted'}`}>

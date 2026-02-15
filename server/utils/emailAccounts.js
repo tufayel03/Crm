@@ -35,7 +35,7 @@ const getEmailAccount = async ({ accountId, purpose } = {}) => {
   }
 
   if (purpose === 'campaigns') {
-    return selectAccount(accounts, a => a.useForCampaigns);
+    return selectAccount(accounts, a => a.isVerified);
   }
 
   return accounts[0];

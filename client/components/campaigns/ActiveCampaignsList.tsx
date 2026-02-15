@@ -4,11 +4,11 @@ import { useCampaignStore } from '../../stores/campaignStore';
 import { Link } from 'react-router-dom';
 import { usePermissions } from '../../hooks/usePermissions';
 import {
-    Play, Pause, Trash2, Clock, Copy, Users, Rocket, Zap, Eye
+    Play, Pause, Trash2, Clock, Copy, Users, Rocket, Zap, Eye, RefreshCw
 } from 'lucide-react';
 
 const ActiveCampaignsList: React.FC = () => {
-    const { campaigns, toggleCampaignStatus, deleteCampaign, cloneCampaign, startCampaignNow } = useCampaignStore();
+    const { campaigns, toggleCampaignStatus, deleteCampaign, cloneCampaign, startCampaignNow, retryFailedRecipients } = useCampaignStore();
     const { can } = usePermissions();
     const canManageCampaigns = can('manage', 'campaigns');
 
@@ -44,6 +44,11 @@ const ActiveCampaignsList: React.FC = () => {
                 const percent = camp.totalRecipients > 0
                     ? Math.round(((camp.sentCount + camp.failedCount) / camp.totalRecipients) * 100)
                     : 0;
+                const senderLabel = Array.isArray(camp.senderAccountEmails) && camp.senderAccountEmails.length > 0
+                    ? camp.senderAccountEmails.length <= 2
+                        ? camp.senderAccountEmails.join(', ')
+                        : `${camp.senderAccountEmails.length} senders`
+                    : (camp.senderAccountEmail || 'Auto');
 
                 return (
                     <div key={camp.id} className="bg-white p-6 rounded-2xl border border-border shadow-sm hover:shadow-md transition-all">
@@ -57,6 +62,8 @@ const ActiveCampaignsList: React.FC = () => {
                                 </div>
                                 <p className="text-sm text-textSecondary flex items-center gap-2 flex-wrap">
                                     <span className="font-medium text-textPrimary">{camp.templateName}</span>
+                                    <span className="text-textMuted">•</span>
+                                    <span>From: {senderLabel}</span>
                                     <span className="text-textMuted">•</span>
                                     <span>Target: {camp.targetStatus === 'All' && camp.targetServiceStatus === 'All' ? 'All Leads' : `Custom Filter`}</span>
                                     <span className="text-textMuted">•</span>
@@ -112,6 +119,15 @@ const ActiveCampaignsList: React.FC = () => {
                                     </button>
                                     )
                                 )}
+                                {canManageCampaigns && camp.failedCount > 0 && (
+                                    <button
+                                        onClick={() => retryFailedRecipients(camp.id)}
+                                        className="p-2 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 transition-colors border border-amber-200"
+                                        title="Retry failed recipients"
+                                    >
+                                        <RefreshCw size={18} />
+                                    </button>
+                                )}
                                 {canManageCampaigns && (
                                     <button
                                         onClick={() => cloneCampaign(camp.id)}
@@ -123,7 +139,11 @@ const ActiveCampaignsList: React.FC = () => {
                                 )}
                                 {canManageCampaigns && (
                                     <button
-                                        onClick={() => deleteCampaign(camp.id)}
+                                        onClick={() => {
+                                            if (window.confirm(`Delete campaign "${camp.name}"? This action cannot be undone.`)) {
+                                                deleteCampaign(camp.id);
+                                            }
+                                        }}
                                         className="p-2 bg-red-50 text-danger rounded-lg hover:bg-red-100 transition-colors border border-red-200"
                                         title="Delete"
                                     >

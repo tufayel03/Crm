@@ -10,6 +10,47 @@ const { applyTemplateTokens } = require('../utils/templateTokens');
 const { buildInlineLogo } = require('../utils/inlineLogo');
 const { normalizeMessageId } = require('../utils/mailThread');
 
+const isRateLimitError = (message = '') => {
+  const text = String(message || '').toLowerCase();
+  if (!text) return false;
+  return [
+    '4.7.1',
+    'sending limit',
+    'rate limit',
+    'too many',
+    'policy rejection',
+    'try again later',
+    'outgoing message count',
+    'daily limit',
+    'hourly limit'
+  ].some((token) => text.includes(token));
+};
+
+const getIntervalThrottle = (hourlyLimit) => {
+  const safeHourly = Math.max(1, Number(hourlyLimit) || 1);
+  if (safeHourly <= 60) {
+    return {
+      intervalMs: Math.ceil((60 * 60 * 1000) / safeHourly),
+      maxSendsPerInterval: 1
+    };
+  }
+
+  return {
+    intervalMs: 60 * 1000,
+    maxSendsPerInterval: Math.max(1, Math.floor(safeHourly / 60))
+  };
+};
+
+const countSentInRange = async (fromDate) => {
+  const stats = await Campaign.aggregate([
+    { $unwind: '$queue' },
+    { $match: { 'queue.status': 'Sent', 'queue.sentAt': { $gte: fromDate } } },
+    { $count: 'count' }
+  ]);
+
+  return stats[0]?.count || 0;
+};
+
 const runBatchForCampaign = async (campaign, batchSize = 20) => {
   // 1. Check Global Rate Limits
   const settings = await Settings.findOne({});
@@ -46,10 +87,19 @@ const runBatchForCampaign = async (campaign, batchSize = 20) => {
     return;
   }
 
+  // Pace sending so hourly limits are spread over time (e.g. 60/h => 1/min, 30/h => 1/2min)
+  const { intervalMs, maxSendsPerInterval } = getIntervalThrottle(limits.hourly);
+  const intervalStart = new Date(now.getTime() - intervalMs);
+  const intervalSent = await countSentInRange(intervalStart);
+  if (intervalSent >= maxSendsPerInterval) {
+    return;
+  }
+
   // Calculate remaining quota for this batch
   const hourlyRemaining = limits.hourly - currentUsage.hourly;
   const dailyRemaining = limits.daily - currentUsage.daily;
-  const safeBatchSize = Math.min(batchSize, hourlyRemaining, dailyRemaining);
+  const intervalRemaining = maxSendsPerInterval - intervalSent;
+  const safeBatchSize = Math.min(batchSize, hourlyRemaining, dailyRemaining, intervalRemaining);
 
   if (safeBatchSize <= 0) return;
 
@@ -99,8 +149,6 @@ const runBatchForCampaign = async (campaign, batchSize = 20) => {
   const template = campaign.templateId ? await EmailTemplate.findById(campaign.templateId) : null;
   const html = template?.htmlContent || campaign.previewText || '';
   const general = settings?.generalSettings || {};
-  const account = await getEmailAccount({ purpose: 'campaigns' });
-
   let sentCount = 0;
   let failedCount = 0;
 
@@ -108,6 +156,11 @@ const runBatchForCampaign = async (campaign, batchSize = 20) => {
 
   for (const item of pendingItems) {
     try {
+      const account = await getEmailAccount({
+        purpose: 'campaigns',
+        accountId: item.senderAccountId || freshCampaign.senderAccountId || campaign.senderAccountId
+      });
+
       const lead = await Lead.findById(item.leadId).lean();
       const client = await Client.findOne({ leadId: item.leadId }).lean();
       const leadName = lead?.name || item.leadName || '';
@@ -183,20 +236,34 @@ const runBatchForCampaign = async (campaign, batchSize = 20) => {
       sentCount++;
     } catch (e) {
       console.error(`[Campaign] Failed to send to ${item.leadEmail}:`, e.message);
-      // Update item status to Failed
-      await Campaign.updateOne(
-        { _id: campaign._id },
-        {
-          $set: {
-            "queue.$[elem].status": 'Failed',
-            "queue.$[elem].error": e.message,
-            "queue.$[elem].sentAt": new Date()
+      if (isRateLimitError(e?.message)) {
+        // Soft-failure due to provider policy/rate limit: put back in queue.
+        await Campaign.updateOne(
+          { _id: campaign._id },
+          {
+            $set: {
+              'queue.$[elem].status': 'Pending',
+              'queue.$[elem].error': e.message
+            }
           },
-          $inc: { failedCount: 1 }
-        },
-        { arrayFilters: [{ "elem.trackingId": item.trackingId }] }
-      );
-      failedCount++;
+          { arrayFilters: [{ 'elem.trackingId': item.trackingId }] }
+        );
+      } else {
+        // Permanent delivery error: mark failed.
+        await Campaign.updateOne(
+          { _id: campaign._id },
+          {
+            $set: {
+              'queue.$[elem].status': 'Failed',
+              'queue.$[elem].error': e.message,
+              'queue.$[elem].sentAt': new Date()
+            },
+            $inc: { failedCount: 1 }
+          },
+          { arrayFilters: [{ 'elem.trackingId': item.trackingId }] }
+        );
+        failedCount++;
+      }
     }
   }
 

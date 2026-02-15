@@ -173,18 +173,53 @@ const LeadDetail: React.FC = () => {
      if (agent) updateAgent(lead.id, agent.id, agent.name);
   };
 
+  const buildLeadEmailTokens = () => {
+    const baseTokens = buildCompanyTokens(generalSettings);
+    const fullName = String(lead.name || 'Customer').trim() || 'Customer';
+    const firstName = fullName.split(' ')[0] || 'Customer';
+    const leadEmail = lead.email || '';
+
+    return {
+      ...baseTokens,
+      // Person tokens
+      lead_name: fullName,
+      lead_first_name: firstName,
+      lead_email: leadEmail,
+      client_name: fullName,
+      full_name: fullName,
+      first_name: firstName,
+
+      // Invoice tokens
+      invoice_id: '',
+      amount: '',
+      due_date: '',
+      service: '',
+
+      // Meeting tokens
+      meeting_title: '',
+      time: '',
+      date: '',
+      link: '',
+      host_name: user?.name || 'Agent',
+
+      // Aliases
+      mtg_title: '',
+      mtg_time: '',
+      mtg_date: '',
+      mtg_link: '',
+      company_addr: baseTokens.company_address || '',
+      company_web: baseTokens.company_website || '',
+      unsubscribe: baseTokens.unsubscribe_link || '',
+      agent_name: user?.name || 'Agent'
+    };
+  };
+
   const handleTemplateSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const tId = e.target.value;
     if (!tId) return;
     const t = templates.find(temp => temp.id === tId);
     if (t) {
-        const baseTokens = buildCompanyTokens(generalSettings);
-        const tokenData = {
-          ...baseTokens,
-          lead_name: lead.name,
-          lead_first_name: lead.name.split(' ')[0],
-          lead_email: lead.email || ''
-        };
+        const tokenData = buildLeadEmailTokens();
         setEmailSubject(applyTemplateTokens(t.subject, tokenData));
         setEmailBody(t.htmlContent);
     }
@@ -199,15 +234,7 @@ const LeadDetail: React.FC = () => {
     }
     
     setIsSendingEmail(true);
-    // Simple replacement for variables if not processed by template selection
-    const baseTokens = buildCompanyTokens(generalSettings);
-    const tokenData = {
-      ...baseTokens,
-      lead_name: lead.name,
-      lead_first_name: lead.name.split(' ')[0],
-      lead_email: lead.email || '',
-      agent_name: user?.name || 'Agent'
-    };
+    const tokenData = buildLeadEmailTokens();
     let finalBody = applyTemplateTokens(emailBody, tokenData);
     const finalSubject = applyTemplateTokens(emailSubject, tokenData);
 

@@ -2,24 +2,33 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useCampaignStore } from '../stores/campaignStore';
+import { useSettingsStore } from '../stores/settingsStore';
 import {
     ArrowLeft, CheckCircle2, XCircle, Clock,
-    Mail, MousePointer2, AlertTriangle, RefreshCw, Loader2
+    Mail, MousePointer2, AlertTriangle, RefreshCw, Loader2, Send, X
 } from 'lucide-react';
 
 const RECIPIENTS_PER_PAGE = 50;
 
 const CampaignResults: React.FC = () => {
     const { id } = useParams<{ id: string }>();
-    const { campaigns, fetchCampaigns } = useCampaignStore();
+    const { campaigns, templates, fetchCampaigns, fetchTemplates, retargetUnopenedRecipients, retryFailedRecipients } = useCampaignStore();
+    const { emailAccounts, fetchSettings } = useSettingsStore();
     const [campaign, setCampaign] = useState(campaigns.find(c => c.id === id));
     const [activeTab, setActiveTab] = useState<'overview' | 'recipients' | 'replied'>('overview');
     const [recipientPage, setRecipientPage] = useState(1);
     const [repliedPage, setRepliedPage] = useState(1);
+    const [isRetargetOpen, setIsRetargetOpen] = useState(false);
+    const [retargetTemplateId, setRetargetTemplateId] = useState('');
+    const [retargetSenderIds, setRetargetSenderIds] = useState<string[]>([]);
+    const [isRetargeting, setIsRetargeting] = useState(false);
+    const [isRetryingFailed, setIsRetryingFailed] = useState(false);
 
     useEffect(() => {
         if (!campaign) fetchCampaigns();
-    }, [fetchCampaigns]);
+        if (!templates.length) fetchTemplates();
+        if (!emailAccounts.length) fetchSettings();
+    }, [fetchCampaigns, fetchTemplates, fetchSettings, templates.length, campaign, emailAccounts.length]);
 
     useEffect(() => {
         setCampaign(campaigns.find(c => c.id === id));
@@ -30,11 +39,16 @@ const CampaignResults: React.FC = () => {
         setRepliedPage(1);
     }, [id, activeTab]);
 
+    useEffect(() => {
+        const validIds = new Set(emailAccounts.filter((acc) => acc.isVerified).map((acc) => acc.id));
+        setRetargetSenderIds((prev) => prev.filter((senderId) => validIds.has(senderId)));
+    }, [emailAccounts]);
+
     if (!campaign) {
         return (
             <div className="flex flex-col items-center justify-center h-96">
                 <p className="text-textSecondary">Campaign not found.</p>
-                <Link to="/email/campaigns" className="text-primary hover:underline mt-2">Back to Campaigns</Link>
+                <Link to="/campaigns/active" className="text-primary hover:underline mt-2">Back to Campaigns</Link>
             </div>
         );
     }
@@ -89,12 +103,31 @@ const CampaignResults: React.FC = () => {
         const clampedPage = Math.min(Math.max(nextPage, 1), repliedTotalPages);
         setRepliedPage(clampedPage);
     };
+    const unopenedSentCount = campaign.queue.filter((item) => item.status === 'Sent' && !item.openedAt).length;
+
+    const handleRetargetUnopened = async () => {
+        if (!id || !retargetTemplateId) return;
+        setIsRetargeting(true);
+        try {
+            await retargetUnopenedRecipients(id, retargetTemplateId, retargetSenderIds);
+            await fetchCampaigns();
+            setIsRetargetOpen(false);
+            setRetargetTemplateId('');
+            setRetargetSenderIds([]);
+            alert('Retarget campaign created and queued for unopened recipients.');
+        } catch (err: any) {
+            alert(err?.message || 'Failed to retarget unopened recipients.');
+        } finally {
+            setIsRetargeting(false);
+        }
+    };
+    const availableSenderAccounts = emailAccounts.filter((acc) => acc.isVerified);
 
     return (
         <div className="space-y-6 pb-20">
             {/* Header */}
             <div className="flex items-center gap-4">
-                <Link to="/email/campaigns" className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+                <Link to="/campaigns/active" className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
                     <ArrowLeft size={20} className="text-textSecondary" />
                 </Link>
                 <div>
@@ -110,6 +143,41 @@ const CampaignResults: React.FC = () => {
                     title="Refresh Data"
                 >
                     <RefreshCw size={20} />
+                </button>
+                <button
+                    onClick={async () => {
+                        if (!id || campaign.failedCount <= 0 || isRetryingFailed) return;
+                        setIsRetryingFailed(true);
+                        try {
+                            await retryFailedRecipients(id);
+                            await fetchCampaigns();
+                            alert('Retry started for failed recipients.');
+                        } catch (err: any) {
+                            alert(err?.message || 'Failed to retry failed recipients.');
+                        } finally {
+                            setIsRetryingFailed(false);
+                        }
+                    }}
+                    disabled={campaign.failedCount <= 0 || isRetryingFailed}
+                    className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    title={campaign.failedCount <= 0 ? 'No failed recipients' : 'Retry failed recipients'}
+                >
+                    {isRetryingFailed ? <Loader2 size={20} className="animate-spin" /> : <RefreshCw size={20} />}
+                </button>
+                <button
+                    onClick={() => {
+                        setRetargetSenderIds(
+                            (campaign.senderAccountIds && campaign.senderAccountIds.length > 0)
+                                ? campaign.senderAccountIds
+                                : (campaign.senderAccountId ? [campaign.senderAccountId] : [])
+                        );
+                        setIsRetargetOpen(true);
+                    }}
+                    disabled={unopenedSentCount === 0}
+                    className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    title={unopenedSentCount === 0 ? 'No unopened recipients' : 'Retarget unopened recipients'}
+                >
+                    <Send size={20} />
                 </button>
             </div>
 
@@ -371,6 +439,78 @@ const CampaignResults: React.FC = () => {
                     {repliedTotal === 0 && (
                         <div className="p-8 text-center text-textMuted text-sm">No replies tracked for this campaign yet.</div>
                     )}
+                </div>
+            )}
+
+            {isRetargetOpen && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-2xl border border-border">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-bold text-textPrimary">Retarget Unopened</h3>
+                            <button
+                                onClick={() => {
+                                    if (isRetargeting) return;
+                                    setIsRetargetOpen(false);
+                                }}
+                                className="p-2 rounded-lg hover:bg-slate-100 text-textMuted"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <p className="text-sm text-textSecondary mb-3">
+                            {unopenedSentCount} recipients have not opened this email yet.
+                        </p>
+                        <label className="block text-xs font-bold text-textSecondary mb-1">Choose Template</label>
+                        <select
+                            value={retargetTemplateId}
+                            onChange={(e) => setRetargetTemplateId(e.target.value)}
+                            className="w-full px-3 py-2 border border-border rounded-lg bg-white text-sm"
+                        >
+                            <option value="">-- Select Template --</option>
+                            {templates.map((t) => (
+                                <option key={t.id} value={t.id}>{t.name}</option>
+                            ))}
+                        </select>
+                        <label className="block text-xs font-bold text-textSecondary mt-4 mb-2">Choose Sender Email(s)</label>
+                        <div className="max-h-36 overflow-y-auto border border-border rounded-lg p-2 space-y-2 bg-slate-50">
+                            {availableSenderAccounts.length === 0 && (
+                                <p className="text-xs text-textMuted">No verified sender email available.</p>
+                            )}
+                            {availableSenderAccounts.map((acc) => {
+                                const checked = retargetSenderIds.includes(acc.id);
+                                return (
+                                    <label key={acc.id} className="flex items-center gap-2 text-sm text-textPrimary">
+                                        <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={(e) => {
+                                                if (e.target.checked) setRetargetSenderIds((prev) => [...prev, acc.id]);
+                                                else setRetargetSenderIds((prev) => prev.filter((id) => id !== acc.id));
+                                            }}
+                                            className="w-4 h-4 text-primary rounded"
+                                        />
+                                        <span>{acc.label ? `${acc.label} (${acc.email})` : acc.email}</span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                        <div className="mt-5 flex justify-end gap-2">
+                            <button
+                                onClick={() => setIsRetargetOpen(false)}
+                                disabled={isRetargeting}
+                                className="px-4 py-2 text-textSecondary hover:bg-slate-100 rounded-lg text-sm font-bold"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleRetargetUnopened}
+                                disabled={!retargetTemplateId || isRetargeting || unopenedSentCount === 0 || retargetSenderIds.length === 0}
+                                className="px-4 py-2 bg-darkGreen text-white rounded-lg text-sm font-bold hover:bg-opacity-90 disabled:opacity-50"
+                            >
+                                {isRetargeting ? 'Sending...' : 'Send'}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

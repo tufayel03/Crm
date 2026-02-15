@@ -27,7 +27,6 @@ const SmtpModal: React.FC<SmtpModalProps> = ({ onClose, onSave }) => {
     imapPort: 993,
     imapSecure: true,
     imapStartTLS: false,
-    useForCampaigns: true,
     useForClients: true,
     useForLeads: true
   });
@@ -298,18 +297,6 @@ const SmtpModal: React.FC<SmtpModalProps> = ({ onClose, onSave }) => {
           <div>
              <label className="block text-xs font-bold text-textSecondary uppercase mb-2">Usage & Routing</label>
              <div className="space-y-2">
-                <label className="flex items-center gap-3 p-3 border border-border rounded-lg cursor-pointer hover:bg-slate-50 transition-colors bg-white">
-                    <input 
-                        type="checkbox" 
-                        checked={formData.useForCampaigns}
-                        onChange={(e) => setFormData({...formData, useForCampaigns: e.target.checked})}
-                        className="w-4 h-4 text-primary focus:ring-primary rounded"
-                    />
-                    <div>
-                        <p className="text-sm font-bold text-textPrimary">Use for Campaigns</p>
-                        <p className="text-xs text-textSecondary">Send bulk email blasts from this address.</p>
-                    </div>
-                </label>
                 <label className="flex items-center gap-3 p-3 border border-border rounded-lg cursor-pointer hover:bg-slate-50 transition-colors bg-white">
                     <input 
                         type="checkbox" 

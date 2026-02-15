@@ -98,7 +98,7 @@ const Settings: React.FC = () => {
                       <Server size={20} className="text-primary" /> Connected Email Accounts
                     </h3>
                          <p className="text-sm text-textSecondary mt-1">
-                            Connect Namecheap or other business emails. Define which accounts handle campaigns, leads, and client communication.
+                            Connect Namecheap or other business emails. Define which accounts handle leads and client communication.
                          </p>
                   </div>
                   <button
@@ -141,7 +141,7 @@ const Settings: React.FC = () => {
                 <div>
                   <h4 className="font-bold text-blue-800 text-sm">Routing Logic</h4>
                         <p className="text-xs text-blue-600 mt-1">
-                            If multiple accounts are selected for <b>Campaigns</b>, the system will distribute the load to optimize delivery rates. 
+                            Campaign sender accounts are selected while creating each campaign.
                             For <b>Lead</b> and <b>Client</b> emails, the system defaults to the first matching verified account unless a specific sender account is chosen.
                         </p>
                 </div>

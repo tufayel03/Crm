@@ -21,7 +21,8 @@ const ClientDetail = lazy(() => import('./pages/ClientDetail'));
 const Tasks = lazy(() => import('./pages/Tasks'));
 const Meetings = lazy(() => import('./pages/Meetings'));
 const EmailTemplates = lazy(() => import('./pages/EmailTemplates'));
-const Campaigns = lazy(() => import('./pages/BulkEmail'));
+const CampaignsActive = lazy(() => import('./pages/BulkEmail'));
+const CampaignHistory = lazy(() => import('./pages/CampaignHistory'));
 const CampaignResults = lazy(() => import('./pages/CampaignResults'));
 const ServicePlans = lazy(() => import('./pages/ServicePlans'));
 const Payments = lazy(() => import('./pages/Payments'));
@@ -70,7 +71,9 @@ const App: React.FC = () => {
             <Route path="/meetings" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']} requiredPermission="meetings"><Meetings /></ProtectedRoute>} />
 
             <Route path="/email-templates" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><EmailTemplates /></ProtectedRoute>} />
-            <Route path="/campaigns" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']} requiredPermission="campaigns"><Campaigns /></ProtectedRoute>} />
+            <Route path="/campaigns" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']} requiredPermission="campaigns"><Navigate to="/campaigns/history" replace /></ProtectedRoute>} />
+            <Route path="/campaigns/active" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']} requiredPermission="campaigns"><CampaignsActive /></ProtectedRoute>} />
+            <Route path="/campaigns/history" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']} requiredPermission="campaigns"><CampaignHistory /></ProtectedRoute>} />
             <Route path="/campaigns/:id" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']} requiredPermission="campaigns"><CampaignResults /></ProtectedRoute>} />
             <Route path="/payments" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent']} requiredPermission="payments"><Payments /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'agent', 'client']} requiredPermission="settings"><Settings /></ProtectedRoute>} />

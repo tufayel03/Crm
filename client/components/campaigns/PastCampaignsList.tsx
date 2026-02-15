@@ -7,14 +7,21 @@ import {
   CheckCircle2, Mail, Trash2, Copy, Eye, MousePointer2, Archive, X
 } from 'lucide-react';
 
+const ITEMS_PER_PAGE = 20;
+
 const PastCampaignsList: React.FC = () => {
   const { campaigns, deleteCampaign, cloneCampaign } = useCampaignStore();
   const { can } = usePermissions();
   const canManageCampaigns = can('manage', 'campaigns');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   const pastCampaigns = campaigns.filter(c => c.status === 'Completed')
     .sort((a, b) => new Date(b.completedAt || b.createdAt).getTime() - new Date(a.completedAt || a.createdAt).getTime());
+  const totalPages = Math.max(1, Math.ceil(pastCampaigns.length / ITEMS_PER_PAGE));
+  const currentPage = Math.min(page, totalPages);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const paginatedCampaigns = pastCampaigns.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
   const selectedCampaign = useMemo(() => pastCampaigns.find(c => c.id === selectedId) || null, [pastCampaigns, selectedId]);
 
@@ -29,7 +36,7 @@ const PastCampaignsList: React.FC = () => {
 
   return (
     <div className="space-y-3">
-      {pastCampaigns.map(camp => {
+      {paginatedCampaigns.map(camp => {
         const openRate = camp.sentCount > 0 ? Math.round((camp.openCount / camp.sentCount) * 100) : 0;
         const clickRate = camp.sentCount > 0 ? Math.round((camp.clickCount / camp.sentCount) * 100) : 0;
 
@@ -82,7 +89,11 @@ const PastCampaignsList: React.FC = () => {
               )}
               {canManageCampaigns && (
                 <button
-                  onClick={() => deleteCampaign(camp.id)}
+                  onClick={() => {
+                    if (window.confirm(`Delete campaign history "${camp.name}"? This action cannot be undone.`)) {
+                      deleteCampaign(camp.id);
+                    }
+                  }}
                   className="p-2 text-textSecondary hover:bg-red-50 hover:text-danger rounded-lg transition-colors"
                   title="Delete History"
                 >
@@ -93,6 +104,32 @@ const PastCampaignsList: React.FC = () => {
           </div>
         )
       })}
+      {pastCampaigns.length > 0 && (
+        <div className="px-4 py-3 border border-border rounded-xl bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <p className="text-xs text-textSecondary">
+            Showing {startIndex + 1} to {Math.min(startIndex + ITEMS_PER_PAGE, pastCampaigns.length)} of {pastCampaigns.length} campaigns
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              disabled={currentPage <= 1}
+              className="px-3 py-1.5 text-xs font-bold rounded border border-border bg-white text-textSecondary hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Prev
+            </button>
+            <span className="text-xs font-bold text-textSecondary px-2">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={currentPage >= totalPages}
+              className="px-3 py-1.5 text-xs font-bold rounded border border-border bg-white text-textSecondary hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {selectedCampaign && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">

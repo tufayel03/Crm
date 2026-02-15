@@ -52,7 +52,7 @@ interface SettingsState {
   fetchPermissions: () => Promise<void>;
   addEmailAccount: (account: Omit<EmailAccount, 'id' | 'sentCount'> & { isVerified?: boolean }) => Promise<void>;
   removeEmailAccount: (id: string) => Promise<void>;
-  updateRouting: (id: string, updates: Partial<Pick<EmailAccount, 'useForCampaigns' | 'useForClients' | 'useForLeads'>>) => Promise<void>;
+  updateRouting: (id: string, updates: Partial<Pick<EmailAccount, 'useForClients' | 'useForLeads'>>) => Promise<void>;
   verifyAccount: (id: string) => Promise<boolean>;
   updateGeneralSettings: (settings: Partial<GeneralSettings>) => Promise<void>;
   updateSystemTemplate: (key: keyof SystemTemplates, template: { subject: string; body: string }) => Promise<void>;
@@ -82,8 +82,12 @@ const patchSingleEmailAccount = (
 const normalizeEmailAccounts = (emailAccounts: EmailAccount[]) => {
   const seen = new Set<string>();
 
-  return emailAccounts.map((acc, index) => {
-    const rawId = typeof acc.id === 'string' ? acc.id.trim() : '';
+  return emailAccounts.map((acc: any, index) => {
+    const rawId = [
+      typeof acc.id === 'string' ? acc.id.trim() : '',
+      typeof acc._id === 'string' ? acc._id.trim() : '',
+      typeof acc.email === 'string' ? acc.email.trim().toLowerCase() : ''
+    ].find(Boolean) || '';
     let nextId = rawId || `email-${Date.now().toString(36)}-${index.toString(36)}`;
 
     while (seen.has(nextId)) {

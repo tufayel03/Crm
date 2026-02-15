@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useCampaignStore } from '../stores/campaignStore';
 import { useLeadsStore } from '../stores/leadsStore';
 import { useClientsStore } from '../stores/clientsStore';
@@ -10,12 +11,11 @@ import { useTeamStore } from '../stores/teamStore';
 import { usePermissions } from '../hooks/usePermissions';
 import {
     Send, Plus, Users, CheckCircle2, Clock, ChevronRight, X,
-    Calendar, Mail, Loader2, Phone, Briefcase, History, Settings, Zap, ChevronDown
+    Calendar, Mail, Loader2, Phone, Briefcase, Settings, Zap, ChevronDown
 } from 'lucide-react';
 
 // Sub-components
 import ActiveCampaignsList from '../components/campaigns/ActiveCampaignsList';
-import PastCampaignsList from '../components/campaigns/PastCampaignsList';
 
 
 
@@ -29,20 +29,28 @@ interface CheckboxMultiSelectProps {
 
 const CheckboxMultiSelect: React.FC<CheckboxMultiSelectProps> = ({ label, placeholder, options, values, onChange }) => {
     const [open, setOpen] = useState(false);
-    const selectedSet = useMemo(() => new Set(values), [values]);
+    const optionValueSet = useMemo(() => new Set(options.map(o => o.value)), [options]);
+    const normalizedValues = useMemo(() => values.filter((v) => optionValueSet.has(v)), [values, optionValueSet]);
+    const selectedSet = useMemo(() => new Set(normalizedValues), [normalizedValues]);
 
-    const summary = values.length === 0
+    useEffect(() => {
+        if (normalizedValues.length !== values.length) {
+            onChange(normalizedValues);
+        }
+    }, [normalizedValues, values, onChange]);
+
+    const summary = normalizedValues.length === 0
         ? placeholder
-        : values.length <= 2
+        : normalizedValues.length <= 2
             ? options.filter(o => selectedSet.has(o.value)).map(o => o.label).join(', ')
-            : `${values.length} selected`;
+            : `${normalizedValues.length} selected`;
 
     const toggleValue = (value: string) => {
-        if (selectedSet.has(value)) onChange(values.filter(v => v !== value));
-        else onChange([...values, value]);
+        if (selectedSet.has(value)) onChange(normalizedValues.filter(v => v !== value));
+        else onChange([...normalizedValues, value]);
     };
 
-    const allSelected = values.length > 0 && values.length === options.length;
+    const allSelected = options.length > 0 && normalizedValues.length === options.length;
 
     return (
         <div className="relative">
@@ -93,7 +101,7 @@ const Campaigns: React.FC = () => {
     const { clients } = useClientsStore();
     const { plans } = useServicesStore();
     const { user } = useAuthStore();
-    const { campaignLimits, updateCampaignLimits } = useSettingsStore();
+    const { campaignLimits, updateCampaignLimits, emailAccounts } = useSettingsStore();
     const { members } = useTeamStore();
     const { can } = usePermissions();
     const canManageCampaigns = can('manage', 'campaigns');
@@ -111,6 +119,7 @@ const Campaigns: React.FC = () => {
     const [newCampaign, setNewCampaign] = useState({
         name: '',
         templateId: '',
+        senderAccountIds: [] as string[],
         previewText: '',
         // Filters
         targetStatus: 'All',
@@ -193,6 +202,7 @@ const Campaigns: React.FC = () => {
             name: newCampaign.name,
             templateId: newCampaign.templateId,
             templateName: template.name,
+            senderAccountIds: newCampaign.senderAccountIds,
             previewText: newCampaign.previewText,
             // Targeting
             targetStatus: newCampaign.targetStatus,
@@ -216,6 +226,7 @@ const Campaigns: React.FC = () => {
         setNewCampaign({
             name: '',
             templateId: '',
+            senderAccountIds: [],
             previewText: '',
             targetStatus: 'All',
             targetStatuses: [],
@@ -244,6 +255,7 @@ const Campaigns: React.FC = () => {
     };
 
     const AGENTS = members.map(m => ({ id: m.id, name: m.name }));
+    const campaignSenderAccounts = emailAccounts.filter((acc) => acc.isVerified);
 
     return (
         <div className="space-y-8 pb-20">
@@ -285,20 +297,27 @@ const Campaigns: React.FC = () => {
                 </div>
             </div>
 
+            <div className="flex gap-2">
+                <Link
+                    to="/campaigns/history"
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-textSecondary border border-border hover:bg-slate-50"
+                >
+                    Campaign History
+                </Link>
+                <Link
+                    to="/campaigns/active"
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-softMint text-darkGreen border border-primary/30"
+                >
+                    Active Campaigns
+                </Link>
+            </div>
+
             {/* --- Active Campaigns Section --- */}
             <div className="space-y-4">
                 <h3 className="font-bold text-lg text-textPrimary flex items-center gap-2">
                     <Send size={20} className="text-primary" /> Active & Upcoming
                 </h3>
                 <ActiveCampaignsList />
-            </div>
-
-            {/* --- Past Campaigns Section --- */}
-            <div className="space-y-4 pt-4 border-t border-border">
-                <h3 className="font-bold text-lg text-textPrimary flex items-center gap-2">
-                    <History size={20} className="text-textMuted" /> Campaign History
-                </h3>
-                <PastCampaignsList />
             </div>
 
             {/* --- SETTINGS MODAL --- */}
@@ -394,6 +413,19 @@ const Campaigns: React.FC = () => {
                                             ))}
                                         </select>
                                     </div>
+                                    <CheckboxMultiSelect
+                                        label="Send From"
+                                        placeholder="Select sender emails"
+                                        options={campaignSenderAccounts.map((acc) => ({
+                                            value: acc.id,
+                                            label: acc.label ? `${acc.label} (${acc.email})` : acc.email
+                                        }))}
+                                        values={newCampaign.senderAccountIds}
+                                        onChange={(vals) => setNewCampaign({ ...newCampaign, senderAccountIds: vals })}
+                                    />
+                                    <p className="text-[10px] text-textMuted -mt-2">
+                                        Select one or more sender emails. Campaign emails are sent only from selected accounts.
+                                    </p>
                                     <div>
                                         <label className="block text-sm font-bold text-textSecondary mb-1">Preview Text <span className="font-normal text-textMuted">(Optional)</span></label>
                                         <input
@@ -580,7 +612,7 @@ const Campaigns: React.FC = () => {
                             {step < 3 ? (
                                 <button
                                     onClick={() => setStep(step + 1)}
-                                    disabled={step === 1 && (!newCampaign.name || !newCampaign.templateId)}
+                                    disabled={step === 1 && (!newCampaign.name || !newCampaign.templateId || newCampaign.senderAccountIds.length === 0)}
                                     className="bg-primary text-darkGreen font-bold px-6 py-2 rounded-xl hover:bg-opacity-90 disabled:opacity-50 transition-all flex items-center gap-2"
                                 >
                                     Next <ChevronRight size={16} />

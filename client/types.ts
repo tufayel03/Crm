@@ -158,7 +158,9 @@ export interface EmailQueueItem {
   leadId: string;
   leadName: string;
   leadEmail: string;
-  status: 'Pending' | 'Sent' | 'Failed';
+  senderAccountId?: string;
+  senderAccountEmail?: string;
+  status: 'Pending' | 'Processing' | 'Sent' | 'Failed';
   sentAt?: string;
   sentMessageId?: string;
   sentBy?: string;
@@ -177,6 +179,10 @@ export interface Campaign {
   name: string;
   templateId: string;
   templateName: string;
+  senderAccountId?: string;
+  senderAccountEmail?: string;
+  senderAccountIds?: string[];
+  senderAccountEmails?: string[];
   status: 'Draft' | 'Queued' | 'Scheduled' | 'Sending' | 'Paused' | 'Completed';
   targetStatus: LeadStatus | 'All';
   targetStatuses?: LeadStatus[];
