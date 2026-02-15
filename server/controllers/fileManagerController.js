@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs/promises');
 const JSZip = require('jszip');
+const fsSync = require('fs');
 
 const uploadsRoot = path.join(__dirname, '..', 'uploads');
 
@@ -45,7 +46,7 @@ exports.listFiles = async (req, res) => {
     const response = scopedFiles.map(file => {
       const normalizedPath = file.path.replace(/\\/g, '/');
       const publicUrl = normalizedPath.startsWith('email-assets/')
-        ? `/public/uploads/${normalizedPath}`
+        ? `/api/v1/files/public/${normalizedPath}`
         : `/uploads/${normalizedPath}`;
       return {
         ...file,
@@ -161,10 +162,26 @@ exports.uploadFile = async (req, res) => {
       size: stat.size,
       modifiedAt: stat.mtime,
       url: isEmailAsset
-        ? `/public/uploads/${normalizedPath}`
+        ? `/api/v1/files/public/${normalizedPath}`
         : `/uploads/${normalizedPath}`
     });
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to upload file.' });
+  }
+};
+
+exports.getPublicAsset = async (req, res) => {
+  try {
+    const filePath = String(req.params[0] || '').replace(/\\/g, '/');
+    if (!filePath || !filePath.startsWith('email-assets/')) {
+      return res.status(404).json({ message: 'File not found' });
+    }
+    const { fullPath } = safeResolve(filePath);
+    if (!fsSync.existsSync(fullPath)) {
+      return res.status(404).json({ message: 'File not found' });
+    }
+    res.sendFile(fullPath);
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Failed to read file.' });
   }
 };
