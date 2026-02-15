@@ -1,6 +1,8 @@
 import React from 'react';
 import { Asset } from './types';
 import { UploadCloud, Trash2, X } from 'lucide-react';
+import { apiRequest } from '../../utils/api';
+import { useNotificationStore } from '../../stores/notificationStore';
 
 interface AssetManagerProps {
   isOpen: boolean;
@@ -10,32 +12,83 @@ interface AssetManagerProps {
 }
 
 const AssetManager: React.FC<AssetManagerProps> = ({ isOpen, onClose, assets, setAssets }) => {
-  if (!isOpen) return null;
+  const { addNotification } = useNotificationStore();
 
-  const handleAssetUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      Array.from(files).forEach((file: File) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          if (ev.target?.result) {
-            const rawName = file.name.split('.')[0];
-            const cleanName = rawName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-            
-            setAssets(prev => [...prev, {
-              id: Math.random().toString(36).substr(2, 9),
-              name: cleanName,
-              url: ev.target!.result as string
-            }]);
-          }
-        };
-        reader.readAsDataURL(file);
-      });
+  const toAbsoluteUrl = (url: string) => {
+    try {
+      return new URL(url, window.location.origin).toString();
+    } catch {
+      return url;
     }
   };
 
-  const deleteAsset = (id: string) => {
-    setAssets(assets.filter(a => a.id !== id));
+  const loadAssets = async () => {
+    try {
+      const files = await apiRequest<Array<{ path: string; name: string; url: string }>>('/api/v1/files?folder=email-assets');
+      setAssets((prev) => {
+        const byId = new Map(prev.map((asset) => [asset.id, asset]));
+        const next = files.map((file) => {
+          const existing = byId.get(file.path);
+          const cleanName = (existing?.name || file.name.split('.')[0] || 'asset').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+          return {
+            id: file.path,
+            name: cleanName,
+            url: toAbsoluteUrl(file.url)
+          };
+        });
+        return next;
+      });
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : 'Failed to load assets.');
+    }
+  };
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    loadAssets();
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const handleAssetUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    try {
+      for (const file of Array.from(files)) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('folder', 'email-assets');
+        const uploaded = await apiRequest<{ path: string; name: string; url: string }>('/api/v1/files/upload', {
+          method: 'POST',
+          body: formData
+        });
+        const rawName = uploaded.name.split('.')[0];
+        const cleanName = rawName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        setAssets((prev) => {
+          const withoutOld = prev.filter((asset) => asset.id !== uploaded.path);
+          return [...withoutOld, { id: uploaded.path, name: cleanName, url: toAbsoluteUrl(uploaded.url) }];
+        });
+      }
+      addNotification('success', 'Asset uploaded.');
+      await loadAssets();
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : 'Upload failed.');
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const deleteAsset = async (id: string) => {
+    try {
+      await apiRequest('/api/v1/files', {
+        method: 'DELETE',
+        body: JSON.stringify({ path: id })
+      });
+      setAssets((prev) => prev.filter((a) => a.id !== id));
+      addNotification('success', 'Asset deleted.');
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : 'Delete failed.');
+    }
   };
 
   return (
@@ -48,7 +101,7 @@ const AssetManager: React.FC<AssetManagerProps> = ({ isOpen, onClose, assets, se
         <div className="p-6 border-b border-border bg-slate-50">
           <label className="flex items-center justify-center gap-2 px-4 py-6 border-2 border-dashed border-primary/50 bg-white rounded-xl text-darkGreen font-bold cursor-pointer hover:bg-softMint/20 transition-all">
             <UploadCloud size={24} /> <span className="text-sm">Upload Images (Multi-select supported)</span>
-            <input type="file" multiple accept="image/*" onChange={handleAssetUpload} className="hidden" />
+            <input type="file" multiple accept=".png,.jpg,.jpeg,.svg,.svgz,.webp,.avif,.bmp,.ico,.tif,.tiff,.heic,.heif,.eps,.ai,image/*" onChange={handleAssetUpload} className="hidden" />
           </label>
         </div>
         <div className="flex-1 overflow-y-auto p-6 bg-slate-100 grid grid-cols-2 md:grid-cols-3 gap-4">

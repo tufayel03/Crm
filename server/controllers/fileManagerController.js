@@ -37,12 +37,21 @@ const walk = async (dir, base = '') => {
 exports.listFiles = async (req, res) => {
   try {
     await fs.mkdir(uploadsRoot, { recursive: true });
+    const folder = String(req.query.folder || '').trim();
     const files = await walk(uploadsRoot);
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const response = files.map(file => ({
-      ...file,
-      url: `${baseUrl}/uploads/${file.path}`
-    }));
+    const scopedFiles = folder
+      ? files.filter(file => file.path === folder || file.path.startsWith(`${folder.replace(/\/+$/, '')}/`))
+      : files;
+    const response = scopedFiles.map(file => {
+      const normalizedPath = file.path.replace(/\\/g, '/');
+      const publicUrl = normalizedPath.startsWith('email-assets/')
+        ? `/public/uploads/${normalizedPath}`
+        : `/uploads/${normalizedPath}`;
+      return {
+        ...file,
+        url: publicUrl
+      };
+    });
     res.json(response);
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to list files.' });
@@ -112,10 +121,15 @@ exports.uploadFile = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'File required' });
 
-    // 1. File Type Validation (Extension)
-    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.zip', '.csv'];
+    // 1. File Type Validation (Extension + mime)
+    const allowedExtensions = [
+      '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.avif', '.ico', '.tif', '.tiff',
+      '.heic', '.heif', '.eps', '.ai',
+      '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.zip', '.csv'
+    ];
     const ext = path.extname(req.file.originalname).toLowerCase();
-    if (!allowedExtensions.includes(ext)) {
+    const isImageMime = String(req.file.mimetype || '').startsWith('image/');
+    if (!allowedExtensions.includes(ext) && !isImageMime) {
       return res.status(400).json({ message: 'File type not allowed' });
     }
 
@@ -138,14 +152,17 @@ exports.uploadFile = async (req, res) => {
     await fs.writeFile(fullPath, req.file.buffer);
 
     const stat = await fs.stat(fullPath);
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const normalizedPath = safePath.replace(/\\/g, '/');
+    const isEmailAsset = normalizedPath.startsWith('email-assets/');
 
     res.json({
-      path: safePath.replace(/\\/g, '/'),
+      path: normalizedPath,
       name: safeName,
       size: stat.size,
       modifiedAt: stat.mtime,
-      url: `${baseUrl}/uploads/${safePath.replace(/\\/g, '/')}`
+      url: isEmailAsset
+        ? `/public/uploads/${normalizedPath}`
+        : `/uploads/${normalizedPath}`
     });
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to upload file.' });

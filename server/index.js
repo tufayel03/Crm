@@ -78,6 +78,8 @@ const uploadsAuth = async (req, res, next) => {
   }
 };
 
+// Public email assets (for hosted images in external email clients like Gmail)
+app.use('/public/uploads/email-assets', express.static(path.join(__dirname, 'uploads', 'email-assets')));
 app.use('/uploads', uploadsAuth, express.static(path.join(__dirname, 'uploads')));
 
 // Route Imports

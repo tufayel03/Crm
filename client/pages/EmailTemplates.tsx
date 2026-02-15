@@ -219,6 +219,7 @@ const EmailTemplates: React.FC = () => {
             }));
             setBlocks(migrate(parsed.blocks || []));
             setGlobalStyle(parsed.globalStyle || DEFAULT_GLOBAL_STYLE);
+            setAssets(Array.isArray(parsed.assets) ? parsed.assets : []);
             setEditorMode('visual');
           } catch (e) {
             console.error(e);
@@ -227,6 +228,7 @@ const EmailTemplates: React.FC = () => {
           setRawHtml(template.htmlContent);
           setEditorMode('code');
           setBlocks([]);
+          setAssets([]);
         }
       }
     } else {
@@ -237,6 +239,7 @@ const EmailTemplates: React.FC = () => {
       setGlobalStyle(DEFAULT_GLOBAL_STYLE);
       setEditorMode('visual');
       setRightPanelTab('blocks');
+      setAssets([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]); 
@@ -655,7 +658,7 @@ const EmailTemplates: React.FC = () => {
       
       // Pass Logo URL to compileHtml
       const html = editorMode === 'visual' ? compileHtml(blocks, globalStyle, assets, generalSettings.logoUrl) : rawHtml;
-      const designJson = editorMode === 'visual' ? JSON.stringify({ blocks, globalStyle }) : undefined;
+      const designJson = editorMode === 'visual' ? JSON.stringify({ blocks, globalStyle, assets }) : undefined;
 
       const templateData = {
           id: selectedId || 'temp-' + Math.random().toString(36).substr(2, 9),
